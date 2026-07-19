@@ -2,10 +2,6 @@
 
 Everything Modern 是一个面向 Windows 的 Everything 前端壳子，目标是在保留 Everything 高速搜索能力的基础上，提供更现代、简洁的界面，并增加桌面分类管理、快捷键呼出、外观设置等功能。
 
-项目地址：https://github.com/Kevae12138/Everything-Modern
-
-作者：Kevae12138
-
 ## 功能
 
 - 调用 Everything/ES 命令行进行本机文件搜索
