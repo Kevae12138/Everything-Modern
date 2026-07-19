@@ -1,0 +1,75 @@
+{
+  "name": "everything-modern",
+  "version": "0.1.0",
+  "description": "A modern Windows shell for Everything search.",
+  "author": "Kevae12138",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kevae12138/Everything-Modern.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Kevae12138/Everything-Modern/issues"
+  },
+  "homepage": "https://github.com/Kevae12138/Everything-Modern#readme",
+  "scripts": {
+    "dev": "node scripts/electron-dev.mjs",
+    "client": "vite --host 127.0.0.1 --port 5177",
+    "build": "node node_modules/vite/bin/vite.js build",
+    "dist": "npm run build && electron-builder --win dir --x64",
+    "dist:portable": "npm run build && electron-builder --win portable --x64",
+    "preview": "vite preview --host 127.0.0.1 --port 4177"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "local.everything.shell",
+    "productName": "Everything Modern",
+    "asar": false,
+    "files": [
+      "build/renderer/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "extraResources": [
+      {
+        "from": "vendor",
+        "to": "vendor"
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "icon": "assets/app-icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "Everything-Modern-${version}-portable.exe"
+    }
+  }
+}

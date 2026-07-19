@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+build/
+release/
+dist/
+out/
+
+# Packaged Electron runtime and installers
+*.exe
+*.msi
+*.zip
+*.7z
+*.nupkg
+
+# Local vendor binaries
+vendor/es/es.exe
+
+# Logs and caches
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vite/
+.cache/
+
+# Environment and local settings
+.env
+.env.*
+!.env.example
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Verification screenshots
+verification-*.png
