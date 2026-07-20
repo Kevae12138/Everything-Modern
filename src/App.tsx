@@ -384,6 +384,7 @@ export function App() {
   const canLoadMore = items.length < total;
   const desktopOnlyMode = launchMode === "desktop" && !settingsOpen && !systemOpen;
   const quickSearchMode = launchMode === "quickSearch" && !settingsOpen && !systemOpen;
+  const quickSearchSettingsMode = launchMode === "quickSearch" && (settingsOpen || systemOpen);
   const desktopModuleVisible = desktopOnlyMode || (!quickSearchMode && Boolean(systemSettings?.showDesktopModule));
   const searchResultsVisible = !desktopOnlyMode && !quickSearchMode && (launchMode === "normal" || searchResultsRevealed);
   const launcherCompact = quickSearchMode;
@@ -453,12 +454,14 @@ export function App() {
 
   useEffect(() => {
     window.everything
-      .setWindowMode(launcherCompact ? "compact" : desktopOnlyMode ? "desktop" : "expanded")
+      .setWindowMode(
+        launcherCompact ? "compact" : desktopOnlyMode ? "desktop" : quickSearchSettingsMode ? "expandedCentered" : "expanded"
+      )
       .catch(() => undefined);
     if (launcherCompact) {
       window.setTimeout(() => inputRef.current?.focus(), 40);
     }
-  }, [desktopOnlyMode, launcherCompact]);
+  }, [desktopOnlyMode, launcherCompact, quickSearchSettingsMode]);
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {

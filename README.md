@@ -15,17 +15,17 @@ Everything Modern is a modern Windows shell for Everything search. It wraps Ever
 
 - Repository: https://github.com/Kevae12138/Everything-Modern
 - Author: Kevae12138
-- Current version: `v0.1.0`
+- Current version: `v0.1.1`
 
 ## Download
 
 End users do not need to download the source code or build the app manually. Download the Windows package from Releases:
 
-[Download Everything Modern v0.1.0](https://github.com/Kevae12138/Everything-Modern/releases/tag/v0.1.0)
+[Download Everything Modern v0.1.1](https://github.com/Kevae12138/Everything-Modern/releases/tag/v0.1.1)
 
 Usage:
 
-1. Download `Everything-Modern-v0.1.0-win-x64.zip`
+1. Download `Everything-Modern-v0.1.1-win-x64.zip`
 2. Extract the archive
 3. Run `Everything Modern.exe`
 
