@@ -7,192 +7,194 @@
 ![Electron](https://img.shields.io/badge/Electron-43-47848f?style=flat-square)
 ![React](https://img.shields.io/badge/React-19-149eca?style=flat-square)
 
-Everything Modern 是一个面向 Windows 的 Everything 现代化前端壳子。它把 Everything 的高速本机文件搜索能力，包装成更简洁的白色桌面应用，并加入全局快捷键、桌面分类、树状文件夹浏览、图标解析、外观设置和后台驻留等功能。
+English | [简体中文](README.zh-CN.md)
 
-> Everything Modern is a modern Windows shell for Everything search, with global hotkeys, desktop categorization, tree-style folder browsing, and a cleaner Electron + React interface.
+Everything Modern is a modern Windows shell for Everything search. It wraps Everything's fast local file search in a clean white desktop app and adds global hotkeys, desktop categorization, tree-style folder browsing, icon extraction, appearance settings, and background tray behavior.
 
-- 项目地址：https://github.com/Kevae12138/Everything-Modern
-- 作者：Kevae12138
-- 当前版本：`v0.1.0`
+> Everything Modern is an independent third-party frontend shell. It does not replace Everything's indexing service.
 
-## 下载
+- Repository: https://github.com/Kevae12138/Everything-Modern
+- Author: Kevae12138
+- Current version: `v0.1.0`
 
-普通用户不需要下载源码或自行构建，可以直接到 Releases 下载 Windows 版本：
+## Download
 
-[下载 Everything Modern v0.1.0](https://github.com/Kevae12138/Everything-Modern/releases/tag/v0.1.0)
+End users do not need to download the source code or build the app manually. Download the Windows package from Releases:
 
-使用方式：
+[Download Everything Modern v0.1.0](https://github.com/Kevae12138/Everything-Modern/releases/tag/v0.1.0)
 
-1. 下载 `Everything-Modern-v0.1.0-win-x64.zip`
-2. 解压压缩包
-3. 双击运行 `Everything Modern.exe`
+Usage:
 
-发布包中包含 Everything Modern 本体、Electron 运行时和 Everything Command-line Interface `es.exe`。搜索能力仍依赖本机已安装并运行 Everything 1.5。
+1. Download `Everything-Modern-v0.1.0-win-x64.zip`
+2. Extract the archive
+3. Run `Everything Modern.exe`
 
-## 目录
+The release package includes Everything Modern, the Electron runtime, and the Everything Command-line Interface `es.exe`. Search still requires Everything 1.5 to be installed and running on the machine.
 
-- [功能特性](#功能特性)
-- [桌面分类](#桌面分类)
-- [界面模式](#界面模式)
-- [安装要求](#安装要求)
-- [源码构建](#源码构建)
-- [构建发布](#构建发布)
-- [常见问题](#常见问题)
-- [第三方声明](#第三方声明)
-- [开源协议](#开源协议)
+## Contents
 
-## 功能特性
+- [Features](#features)
+- [Desktop Categorization](#desktop-categorization)
+- [Window Modes](#window-modes)
+- [Requirements](#requirements)
+- [Build From Source](#build-from-source)
+- [Package](#package)
+- [FAQ](#faq)
+- [Third-Party Notices](#third-party-notices)
+- [License](#license)
 
-### Everything 搜索
+## Features
 
-- 调用 Everything Command-line Interface `es.exe` 进行本机搜索
-- 支持 Everything 1.5
-- 支持普通关键词和 Everything 搜索语法
-- 支持按名称、路径、大小、扩展名、修改时间等字段排序
-- 支持升序、降序、文件类型筛选、匹配路径、正则搜索
-- 支持搜索结果分页加载
-- 支持打开文件、定位文件、复制路径
+### Everything Search
 
-### 图标解析
+- Uses Everything Command-line Interface `es.exe` for local file search
+- Supports Everything 1.5
+- Supports plain keywords and Everything search syntax
+- Supports sorting by name, path, size, extension, and modified time
+- Supports ascending/descending order, file type filters, path matching, and regex search
+- Supports loading more search results
+- Supports opening files, revealing files, and copying paths
 
-- 搜索结果和桌面分类都支持显示文件图标
-- 支持普通文件、文件夹、软件快捷方式图标
-- 支持 `.lnk` 快捷方式图标解析
-- 支持 `.url` 快捷方式图标解析
-- 当快捷方式本身没有可用图标时，会继续尝试读取目标程序或图标路径
-- 针对部分 Windows 程序图标，提供系统图标提取兜底逻辑
+### Icon Extraction
 
-### 快捷键
+- Shows file icons in search results and desktop categorization
+- Supports regular files, folders, and application shortcuts
+- Resolves `.lnk` shortcut icons
+- Resolves `.url` shortcut icons
+- Falls back to target executable or icon location when shortcut metadata is incomplete
+- Uses an additional Windows icon extraction fallback for some program icons
 
-- 支持全局快捷键呼出极简搜索框
-- 支持单独设置桌面分类快捷键
-- 快捷搜索框默认居中显示
-- 输入关键词并搜索后，窗口会恢复成完整搜索结果界面并重新居中
-- 快捷搜索框和桌面分类浮窗失焦后会自动隐藏
+### Hotkeys
 
-### 外观设置
+- Global hotkey for the compact search box
+- Separate hotkey for the desktop categorization panel
+- Compact search box opens centered on screen
+- Submitting a search restores the full results window and recenters it
+- Compact search and desktop categorization windows hide automatically when they lose focus
 
-Everything Modern 提供可视化外观设置，并自动保存：
+### Appearance Settings
 
-- 窗口圆角
-- 输入框圆角
-- 按钮圆角
-- 搜索结果行高
-- 搜索结果行间距
-- 界面字号
-- 列表字号
-- 工具栏高度
-- 边框强度
+Everything Modern provides visual appearance settings that are saved automatically:
 
-### 系统设置
+- Window radius
+- Input radius
+- Button radius
+- Search result row height
+- Search result row spacing
+- UI font size
+- List font size
+- Toolbar height
+- Border strength
 
-系统设置里包含软件行为相关选项：
+### System Settings
 
-- 参考上次搜索逻辑
-- 是否系统自启动
-- 是否存在后台
-- 显示窗口软件名称
-- 快速调用快捷键
-- 显示桌面分类
-- 显示树状结构
-- 桌面分类快捷键
-- 关于
+System settings currently include:
 
-## 桌面分类
+- Remember last search logic
+- Start with Windows
+- Stay in background
+- Show window title
+- Quick search hotkey
+- Show desktop categorization
+- Show tree structure
+- Desktop categorization hotkey
+- About
 
-桌面分类是 Everything Modern 除搜索之外的主要功能。它会读取当前用户桌面和公共桌面的内容，并以类似搜索结果的列表样式展示。
+## Desktop Categorization
 
-它适合用来整理桌面软件、文件和文件夹，思路接近手机系统里的图标文件夹：用户可以把桌面上的项目分到不同分类，让桌面管理更清爽。
+Desktop categorization is the main feature besides search. It reads items from the current user's desktop and the public desktop, then displays them in a list style similar to search results.
 
-支持能力：
+It is designed for organizing desktop apps, files, and folders. The idea is close to app folders on mobile systems: put desktop items into categories so the desktop stays cleaner.
 
-- 自动识别桌面项目
-- 支持桌面软件快捷方式
-- 支持桌面普通文件
-- 支持桌面文件夹
-- 支持显示对应图标
-- 支持新建分类
-- 支持给桌面项目分配分类
-- 支持编辑分类名称
-- 支持删除分类
-- 支持在编辑模式下拖拽调整分类顺序
-- 支持在编辑模式下显示类型和分类选择
-- 非编辑模式下保持更简洁的展示
+Supported actions:
 
-### 树状文件夹浏览
+- Detect desktop items automatically
+- Show desktop application shortcuts
+- Show desktop files
+- Show desktop folders
+- Show matching icons
+- Create categories
+- Assign desktop items to categories
+- Rename categories
+- Delete categories
+- Reorder categories by dragging in edit mode
+- Show type and category selectors in edit mode
+- Keep the normal view minimal outside edit mode
 
-系统设置中可以开启“显示树状结构”。
+### Tree-Style Folder Browsing
 
-开启后：
+The `Show tree structure` option can be enabled in system settings.
 
-- 桌面分类中的文件夹可以直接在软件内打开
-- 双击文件夹后，不会跳到 Windows 资源管理器，而是在当前模块里显示文件夹内容
-- 支持继续进入子文件夹
-- 顶部提供路径导航，可以回到桌面根级或上级文件夹
+When enabled:
 
-关闭后：
+- Folders in desktop categorization can be opened inside the app
+- Double-clicking a folder shows its contents in the same panel instead of opening File Explorer
+- Subfolders can be opened recursively
+- Breadcrumb navigation can return to the desktop root or a parent folder
 
-- 双击文件夹会按普通文件夹打开方式交给系统处理
+When disabled:
 
-## 界面模式
+- Double-clicking a folder lets Windows handle it normally
 
-Everything Modern 当前主要有三种打开状态：
+## Window Modes
 
-| 模式 | 触发方式 | 行为 |
+Everything Modern currently has three main opening modes:
+
+| Mode | Trigger | Behavior |
 | --- | --- | --- |
-| 普通打开 | exe、任务栏、托盘 | 默认显示完整搜索界面 |
-| 快捷搜索 | 快速调用快捷键 | 只显示居中的极简搜索框，搜索后恢复完整结果页 |
-| 桌面分类 | 桌面分类快捷键 | 只显示桌面分类模块，窗口位于屏幕左侧并保留边距 |
+| Normal | exe, taskbar, tray | Shows the full search interface by default |
+| Quick Search | Quick search hotkey | Shows only a centered compact search box, then restores the full results window after searching |
+| Desktop Categorization | Desktop categorization hotkey | Shows only the desktop categorization panel on the left side of the screen with margins |
 
-## 安装要求
+## Requirements
 
 - Windows 10/11
 - Everything 1.5
 
-如果你只想使用软件，请下载 Releases 中的 Windows 压缩包。
+If you only want to use the app, download the Windows zip package from Releases.
 
-如果你想修改源码或自行构建，还需要：
+If you want to modify the source or build it yourself, you also need:
 
-- Node.js 20 或更新版本
-- Everything Command-line Interface `es.exe`，用于打包后的搜索功能
+- Node.js 20 or later
+- Everything Command-line Interface `es.exe`, used by the packaged search feature
 
-> 本项目不包含 Everything 的索引服务。请从 voidtools 官方渠道安装并运行 Everything。
+> This project does not include Everything's indexing service. Install and run Everything from voidtools.
 
-## 源码构建
+## Build From Source
 
-安装依赖：
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-构建前端资源：
+Build renderer assets:
 
 ```bash
 npm run build
 ```
 
-## 构建发布
+## Package
 
-构建 Windows 便携版：
+Build the Windows portable package:
 
 ```bash
 npm run dist:portable
 ```
 
-打包或运行搜索功能前，请将 `es.exe` 放到：
+Before packaging or running search features, place `es.exe` at:
 
 ```text
 vendor/es/es.exe
 ```
 
-也可以通过环境变量指定 Everything 安装路径：
+You can also specify the Everything executable path with:
 
 ```text
 EVERYTHING_EXE_PATH=C:\Program Files\Everything\Everything.exe
 ```
 
-程序会尝试查找以下位置：
+The app tries these locations:
 
 - `EVERYTHING_EXE_PATH`
 - `D:\Software\Everything\Everything.exe`
@@ -200,7 +202,7 @@ EVERYTHING_EXE_PATH=C:\Program Files\Everything\Everything.exe
 - `C:\Program Files (x86)\Everything\Everything.exe`
 - `%LOCALAPPDATA%\Programs\Everything\Everything.exe`
 
-## 技术栈
+## Tech Stack
 
 - Electron
 - React
@@ -209,36 +211,36 @@ EVERYTHING_EXE_PATH=C:\Program Files\Everything\Everything.exe
 - lucide-react
 - Everything CLI `es.exe`
 
-## 常见问题
+## FAQ
 
-### 它能替代 Everything 吗？
+### Can it replace Everything?
 
-不能。Everything Modern 是 Everything 的第三方前端壳子，文件索引和搜索能力仍来自 Everything。
+No. Everything Modern is a third-party frontend shell for Everything. File indexing and search are still provided by Everything.
 
-### 为什么源码仓库里没有 exe？
+### Why is there no exe in the source repository?
 
-GitHub 普通源码仓库不适合提交大型二进制文件，打包好的 Windows 版本放在 GitHub Releases 中。
+GitHub source repositories are not a good place for large binaries. Packaged Windows builds are published in GitHub Releases.
 
-### 为什么源码仓库里没有 `es.exe`？
+### Why is `es.exe` not in the source repository?
 
-`es.exe` 来自 voidtools。源码仓库只保留放置位置说明，发布包会携带运行所需文件。
+`es.exe` comes from voidtools. The source repository only keeps the expected location. Release packages include runtime files needed by the app.
 
-### 为什么有些功能依赖 Everything 1.5？
+### Why do some features depend on Everything 1.5?
 
-项目当前按 Everything 1.5 和 ES 命令行工具进行适配，旧版本 Everything 可能缺少需要的查询能力或返回字段。
+The current project is adapted for Everything 1.5 and the ES command-line tool. Older Everything versions may miss required query behavior or returned fields.
 
-## 第三方声明
+## Third-Party Notices
 
-- Everything Modern 是第三方前端壳子，不隶属于 voidtools
-- Everything 和 `es.exe` 的版权归其各自权利人所有
-- Electron 运行时随 Windows 发布包一起分发
-- 本仓库不提交 `node_modules/`
-- 本仓库不提交打包后的 exe
-- 本仓库不提交本地 `es.exe`
-- 可直接运行的 Windows 发布包会放在 GitHub Releases
+- Everything Modern is an independent third-party frontend shell and is not affiliated with voidtools
+- Everything and `es.exe` belong to their respective rights holders
+- Electron runtime files are distributed with the Windows release package
+- This repository does not commit `node_modules/`
+- This repository does not commit packaged exe files
+- This repository does not commit local `es.exe`
+- Ready-to-run Windows packages are published in GitHub Releases
 
-更多信息见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for more information.
 
-## 开源协议
+## License
 
-本项目基于 MIT License 开源。
+This project is licensed under the MIT License.
