@@ -1,16 +1,25 @@
 # Everything Modern
 
-Everything Modern 是一个面向 Windows 的 Everything 现代化前端壳子。它保留 Everything 的高速本机文件搜索能力，同时提供更简洁的白色界面、快捷键呼出、桌面分类管理、树状文件夹浏览、外观设置和系统设置。
+![GitHub release](https://img.shields.io/github/v/release/Kevae12138/Everything-Modern?style=flat-square)
+![GitHub downloads](https://img.shields.io/github/downloads/Kevae12138/Everything-Modern/total?style=flat-square)
+![License](https://img.shields.io/github/license/Kevae12138/Everything-Modern?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square)
+![Electron](https://img.shields.io/badge/Electron-43-47848f?style=flat-square)
+![React](https://img.shields.io/badge/React-19-149eca?style=flat-square)
 
-项目地址：https://github.com/Kevae12138/Everything-Modern
+Everything Modern 是一个面向 Windows 的 Everything 现代化前端壳子。它把 Everything 的高速本机文件搜索能力，包装成更简洁的白色桌面应用，并加入全局快捷键、桌面分类、树状文件夹浏览、图标解析、外观设置和后台驻留等功能。
 
-作者：Kevae12138
+> Everything Modern is a modern Windows shell for Everything search, with global hotkeys, desktop categorization, tree-style folder browsing, and a cleaner Electron + React interface.
 
-## 下载使用
+- 项目地址：https://github.com/Kevae12138/Everything-Modern
+- 作者：Kevae12138
+- 当前版本：`v0.1.0`
+
+## 下载
 
 普通用户不需要下载源码或自行构建，可以直接到 Releases 下载 Windows 版本：
 
-https://github.com/Kevae12138/Everything-Modern/releases
+[下载 Everything Modern v0.1.0](https://github.com/Kevae12138/Everything-Modern/releases/tag/v0.1.0)
 
 使用方式：
 
@@ -20,55 +29,80 @@ https://github.com/Kevae12138/Everything-Modern/releases
 
 发布包中包含 Everything Modern 本体、Electron 运行时和 Everything Command-line Interface `es.exe`。搜索能力仍依赖本机已安装并运行 Everything 1.5。
 
-## 项目定位
+## 目录
 
-Everything 本身非常轻量、快速、稳定，但原生界面偏传统。Everything Modern 的目标不是替代 Everything 的索引能力，而是在 Everything 和 `es.exe` 的基础上，提供一个更适合日常快速调用的桌面搜索与桌面图标管理界面。
+- [功能特性](#功能特性)
+- [桌面分类](#桌面分类)
+- [界面模式](#界面模式)
+- [安装要求](#安装要求)
+- [开发运行](#开发运行)
+- [构建发布](#构建发布)
+- [常见问题](#常见问题)
+- [第三方声明](#第三方声明)
+- [开源协议](#开源协议)
 
-适合这些场景：
-
-- 希望用更简洁的界面调用 Everything 搜索
-- 希望通过快捷键快速弹出搜索框
-- 希望把桌面软件和文件按分类整理
-- 希望在一个左侧浮窗里浏览桌面文件夹内容
-- 希望自由调整窗口圆角、按钮圆角、行距等界面细节
-
-## 核心功能
+## 功能特性
 
 ### Everything 搜索
 
 - 调用 Everything Command-line Interface `es.exe` 进行本机搜索
 - 支持 Everything 1.5
-- 支持普通关键词搜索
-- 支持 Everything 搜索语法
+- 支持普通关键词和 Everything 搜索语法
 - 支持按名称、路径、大小、扩展名、修改时间等字段排序
-- 支持升序和降序
-- 支持筛选全部、文件、文件夹
-- 支持匹配路径
-- 支持正则搜索
+- 支持升序、降序、文件类型筛选、匹配路径、正则搜索
 - 支持搜索结果分页加载
 - 支持打开文件、定位文件、复制路径
 
-### 图标显示
+### 图标解析
 
-- 搜索结果支持显示文件图标
-- 桌面分类支持显示软件、文件、文件夹图标
+- 搜索结果和桌面分类都支持显示文件图标
+- 支持普通文件、文件夹、软件快捷方式图标
 - 支持 `.lnk` 快捷方式图标解析
 - 支持 `.url` 快捷方式图标解析
-- 当快捷方式本身没有可用图标时，会尝试读取目标程序或图标路径
-- 针对部分 Windows 程序图标，提供额外的系统图标提取兜底逻辑
+- 当快捷方式本身没有可用图标时，会继续尝试读取目标程序或图标路径
+- 针对部分 Windows 程序图标，提供系统图标提取兜底逻辑
 
-### 快捷键快速搜索
+### 快捷键
 
-- 支持设置全局快捷键呼出搜索框
-- 快捷键打开时默认只显示极简搜索框
-- 极简搜索框默认居中显示
-- 搜索提交后，窗口会恢复成完整搜索结果界面，并重新位于屏幕中央
-- 极简搜索框失焦后会自动隐藏
-- 普通方式打开软件时，不会进入极简模式，会默认显示完整搜索界面
+- 支持全局快捷键呼出极简搜索框
+- 支持单独设置桌面分类快捷键
+- 快捷搜索框默认居中显示
+- 输入关键词并搜索后，窗口会恢复成完整搜索结果界面并重新居中
+- 快捷搜索框和桌面分类浮窗失焦后会自动隐藏
 
-### 桌面分类
+### 外观设置
 
-桌面分类是 Everything Modern 除搜索之外的主要功能。它会读取当前用户桌面和公共桌面的内容，并以和搜索结果相似的列表样式展示。
+Everything Modern 提供可视化外观设置，并自动保存：
+
+- 窗口圆角
+- 输入框圆角
+- 按钮圆角
+- 搜索结果行高
+- 搜索结果行间距
+- 界面字号
+- 列表字号
+- 工具栏高度
+- 边框强度
+
+### 系统设置
+
+系统设置里包含软件行为相关选项：
+
+- 参考上次搜索逻辑
+- 是否系统自启动
+- 是否存在后台
+- 显示窗口软件名称
+- 快速调用快捷键
+- 显示桌面分类
+- 显示树状结构
+- 桌面分类快捷键
+- 关于
+
+## 桌面分类
+
+桌面分类是 Everything Modern 除搜索之外的主要功能。它会读取当前用户桌面和公共桌面的内容，并以类似搜索结果的列表样式展示。
+
+它适合用来整理桌面软件、文件和文件夹，思路接近手机系统里的图标文件夹：用户可以把桌面上的项目分到不同分类，让桌面管理更清爽。
 
 支持能力：
 
@@ -85,16 +119,6 @@ Everything 本身非常轻量、快速、稳定，但原生界面偏传统。Eve
 - 支持在编辑模式下显示类型和分类选择
 - 非编辑模式下保持更简洁的展示
 
-桌面分类的设计类似手机里的图标文件夹：用户可以把桌面上的软件和文件整理到不同分类里，让桌面管理更清爽。
-
-### 桌面分类快捷键
-
-- 支持单独设置“桌面分类快捷键”
-- 使用该快捷键打开时，只显示桌面分类模块
-- 桌面分类浮窗默认出现在屏幕左侧
-- 窗口与屏幕上边、下边、左边保留较大边距，避免贴边
-- 桌面分类浮窗失焦后会自动隐藏
-
 ### 树状文件夹浏览
 
 系统设置中可以开启“显示树状结构”。
@@ -110,67 +134,29 @@ Everything 本身非常轻量、快速、稳定，但原生界面偏传统。Eve
 
 - 双击文件夹会按普通文件夹打开方式交给系统处理
 
-### 外观设置
-
-Everything Modern 提供可视化外观设置，并自动保存。
-
-当前支持调整：
-
-- 窗口圆角
-- 输入框圆角
-- 按钮圆角
-- 搜索结果行高
-- 搜索结果行间距
-- 界面字号
-- 列表字号
-- 工具栏高度
-- 边框强度
-
-这些设置可以让用户按自己的审美调整界面，例如更紧凑、更宽松、更圆润或更接近原生 Everything 的信息密度。
-
-### 系统设置
-
-系统设置里包含软件行为相关选项：
-
-- 参考上次搜索逻辑
-- 是否系统自启动
-- 是否存在后台
-- 显示窗口软件名称
-- 快速调用快捷键
-- 显示桌面分类
-- 显示树状结构
-- 桌面分类快捷键
-- 关于
-
-“关于”区域会显示：
-
-- 项目地址
-- 作者
-
 ## 界面模式
 
 Everything Modern 当前主要有三种打开状态：
 
-### 普通打开
+| 模式 | 触发方式 | 行为 |
+| --- | --- | --- |
+| 普通打开 | exe、任务栏、托盘 | 默认显示完整搜索界面 |
+| 快捷搜索 | 快速调用快捷键 | 只显示居中的极简搜索框，搜索后恢复完整结果页 |
+| 桌面分类 | 桌面分类快捷键 | 只显示桌面分类模块，窗口位于屏幕左侧并保留边距 |
 
-从 exe、任务栏、托盘等方式打开时，默认显示完整搜索界面。
-
-### 快捷搜索打开
-
-通过快速调用快捷键打开时，只显示一个居中的短搜索框。输入关键词并搜索后，会切换回完整搜索结果界面。
-
-### 桌面分类打开
-
-通过桌面分类快捷键打开时，只显示桌面分类模块，并出现在屏幕左侧。
-
-## 环境要求
+## 安装要求
 
 - Windows 10/11
-- Node.js 20 或更新版本
 - Everything 1.5
+
+如果你只想使用软件，请下载 Releases 中的 Windows 压缩包。
+
+如果你想开发或自行构建，还需要：
+
+- Node.js 20 或更新版本
 - Everything Command-line Interface `es.exe`
 
-> 本项目不包含 Everything 或 `es.exe` 的二进制文件。请从 voidtools 官方渠道安装 Everything，并下载对应的 ES 命令行工具。
+> 本项目不包含 Everything 的索引服务。请从 voidtools 官方渠道安装并运行 Everything。
 
 ## 开发运行
 
@@ -186,7 +172,7 @@ npm install
 npm run dev
 ```
 
-## 构建
+## 构建发布
 
 构建前端资源：
 
@@ -199,8 +185,6 @@ npm run build
 ```bash
 npm run dist:portable
 ```
-
-## 配置 ES
 
 开发或打包前，请将 `es.exe` 放到：
 
@@ -231,14 +215,35 @@ EVERYTHING_EXE_PATH=C:\Program Files\Everything\Everything.exe
 - lucide-react
 - Everything CLI `es.exe`
 
-## 注意事项
+## 常见问题
+
+### 它能替代 Everything 吗？
+
+不能。Everything Modern 是 Everything 的第三方前端壳子，文件索引和搜索能力仍来自 Everything。
+
+### 为什么源码仓库里没有 exe？
+
+GitHub 普通源码仓库不适合提交大型二进制文件，打包好的 Windows 版本放在 GitHub Releases 中。
+
+### 为什么源码仓库里没有 `es.exe`？
+
+`es.exe` 来自 voidtools。源码仓库只保留放置位置说明，发布包会携带运行所需文件。
+
+### 为什么有些功能依赖 Everything 1.5？
+
+项目当前按 Everything 1.5 和 ES 命令行工具进行适配，旧版本 Everything 可能缺少需要的查询能力或返回字段。
+
+## 第三方声明
 
 - Everything Modern 是第三方前端壳子，不隶属于 voidtools
 - Everything 和 `es.exe` 的版权归其各自权利人所有
+- Electron 运行时随 Windows 发布包一起分发
 - 本仓库不提交 `node_modules/`
 - 本仓库不提交打包后的 exe
 - 本仓库不提交本地 `es.exe`
 - 可直接运行的 Windows 发布包会放在 GitHub Releases
+
+更多信息见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 开源协议
 
