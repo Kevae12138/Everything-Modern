@@ -110,6 +110,8 @@ interface Window {
     updateSystemSettings: (patch: Partial<SystemSettings>) => Promise<SystemSettings>;
     getLaunchMode: () => Promise<LaunchMode>;
     onLaunchMode: (callback: (mode: LaunchMode) => void) => () => void;
+    onWindowVisibility: (callback: (visible: boolean) => void) => () => void;
+    trimMemory: () => Promise<boolean>;
     minimize: () => Promise<boolean>;
     toggleMaximize: () => Promise<boolean>;
     setWindowMode: (mode: "compact" | "expanded" | "expandedCentered" | "desktop") => Promise<boolean>;

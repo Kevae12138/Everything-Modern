@@ -3,8 +3,12 @@ const { spawn } = require("node:child_process");
 const { existsSync, statSync, readFileSync, unlinkSync, writeFileSync, mkdirSync, readdirSync } = require("node:fs");
 const { dirname, extname, join } = require("node:path");
 const { tmpdir } = require("node:os");
+const { createHash } = require("node:crypto");
 
 const iconCache = new Map();
+const maxMainMemoryIcons = 128;
+const executableIconExtensions = new Set([".exe", ".dll", ".ocx", ".cpl", ".scr", ".bat", ".cmd"]);
+const imageIconExtensions = new Set([".ico", ".png", ".jpg", ".jpeg", ".bmp"]);
 const defaultSystemSettings = {
   startAtLogin: false,
   stayInBackground: true,
@@ -357,7 +361,7 @@ function normalizeIconPath(value) {
 function getImageFileIcon(iconPath) {
   const normalizedPath = normalizeIconPath(iconPath);
   const extension = extname(normalizedPath).toLowerCase();
-  if (![".ico", ".png", ".jpg", ".jpeg", ".bmp"].includes(extension) || !existsSync(normalizedPath)) {
+  if (!imageIconExtensions.has(extension) || !existsSync(normalizedPath)) {
     return "";
   }
 
@@ -369,7 +373,73 @@ function getImageFileIcon(iconPath) {
   }
 }
 
-async function extractWindowsIcon(iconPath, iconIndex = 0) {
+function iconCacheDirectory() {
+  return join(app.getPath("userData"), "icon-cache");
+}
+
+function hashText(value) {
+  return createHash("sha1").update(String(value)).digest("hex");
+}
+
+function getIconSourceSignature(candidate) {
+  const normalizedPath = normalizeIconPath(candidate?.path);
+  const iconIndex = Number(candidate?.index || 0);
+  if (!normalizedPath) return `missing:${iconIndex}`;
+
+  try {
+    const stats = statSync(normalizedPath);
+    return `${normalizedPath.toLowerCase()}|${iconIndex}|${Math.round(stats.mtimeMs)}|${stats.size}`;
+  } catch {
+    return `${normalizedPath.toLowerCase()}|${iconIndex}|missing`;
+  }
+}
+
+function getDiskIconCacheKey(item, memoryCacheKey, primaryCandidate) {
+  if (item.isFolder) return "folder-default-v1";
+  if (String(memoryCacheKey || "").startsWith("ext:")) return memoryCacheKey;
+  return getIconSourceSignature(primaryCandidate);
+}
+
+function getDiskIconCachePath(diskCacheKey) {
+  return join(iconCacheDirectory(), `${hashText(diskCacheKey)}.png`);
+}
+
+function readDiskIconCache(diskCacheKey) {
+  try {
+    const cachePath = getDiskIconCachePath(diskCacheKey);
+    if (!existsSync(cachePath)) return "";
+    const base64 = readFileSync(cachePath).toString("base64");
+    return base64 ? `data:image/png;base64,${base64}` : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeDiskIconCache(diskCacheKey, icon) {
+  try {
+    const match = String(icon || "").match(/^data:image\/(?:png|x-icon|vnd\.microsoft\.icon|jpeg|jpg|bmp);base64,(.+)$/i);
+    if (!match) return;
+    mkdirSync(iconCacheDirectory(), { recursive: true });
+    writeFileSync(getDiskIconCachePath(diskCacheKey), Buffer.from(match[1], "base64"));
+  } catch {
+    // Disk cache is optional; icon loading should keep working without it.
+  }
+}
+
+function rememberIcon(memoryCacheKey, diskCacheKey, icon) {
+  if (!icon) return "";
+  iconCache.delete(memoryCacheKey);
+  iconCache.set(memoryCacheKey, icon);
+  while (iconCache.size > maxMainMemoryIcons) {
+    const oldestKey = iconCache.keys().next().value;
+    if (!oldestKey) break;
+    iconCache.delete(oldestKey);
+  }
+  writeDiskIconCache(diskCacheKey, icon);
+  return icon;
+}
+
+async function extractWindowsIcon(iconPath, iconIndex = 0, size = 64) {
   const normalizedPath = normalizeIconPath(iconPath);
   if (!normalizedPath || !existsSync(normalizedPath)) return "";
 
@@ -381,6 +451,8 @@ using System;
 using System.Runtime.InteropServices;
 public static class EverythingModernIconNative {
   [DllImport("Shell32.dll", CharSet = CharSet.Unicode)]
+  public static extern int SHDefExtractIcon(string file, int index, uint flags, out IntPtr largeIcon, out IntPtr smallIcon, uint iconSize);
+  [DllImport("Shell32.dll", CharSet = CharSet.Unicode)]
   public static extern int ExtractIconEx(string file, int index, IntPtr[] largeIcons, IntPtr[] smallIcons, int icons);
   [DllImport("User32.dll")]
   public static extern bool DestroyIcon(IntPtr icon);
@@ -388,14 +460,24 @@ public static class EverythingModernIconNative {
 "@
 $path = $env:EVERYTHING_MODERN_ICON_PATH
 $index = [int]($env:EVERYTHING_MODERN_ICON_INDEX)
+$size = [Math]::Max(16, [Math]::Min(256, [int]($env:EVERYTHING_MODERN_ICON_SIZE)))
+$iconSize = [uint32]($size -bor ($size -shl 16))
 $handles = New-Object IntPtr[] 1
+$largeIcon = [IntPtr]::Zero
+$smallIcon = [IntPtr]::Zero
 $icon = $null
 try {
-  $count = [EverythingModernIconNative]::ExtractIconEx($path, $index, $handles, $null, 1)
-  if ($count -gt 0 -and $handles[0] -ne [IntPtr]::Zero) {
-    $icon = [System.Drawing.Icon]::FromHandle($handles[0])
-  } else {
-    $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
+  $hr = [EverythingModernIconNative]::SHDefExtractIcon($path, $index, 0, [ref]$largeIcon, [ref]$smallIcon, $iconSize)
+  if ($hr -eq 0 -and $largeIcon -ne [IntPtr]::Zero) {
+    $icon = [System.Drawing.Icon]::FromHandle($largeIcon)
+  }
+  if ($null -eq $icon) {
+    $count = [EverythingModernIconNative]::ExtractIconEx($path, $index, $handles, $null, 1)
+    if ($count -gt 0 -and $handles[0] -ne [IntPtr]::Zero) {
+      $icon = [System.Drawing.Icon]::FromHandle($handles[0])
+    } else {
+      $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
+    }
   }
   if ($null -eq $icon) { exit 2 }
   $bitmap = $icon.ToBitmap()
@@ -406,6 +488,8 @@ try {
   $bitmap.Dispose()
 } finally {
   if ($null -ne $icon) { $icon.Dispose() }
+  if ($largeIcon -ne [IntPtr]::Zero) { [EverythingModernIconNative]::DestroyIcon($largeIcon) | Out-Null }
+  if ($smallIcon -ne [IntPtr]::Zero) { [EverythingModernIconNative]::DestroyIcon($smallIcon) | Out-Null }
   if ($handles[0] -ne [IntPtr]::Zero) { [EverythingModernIconNative]::DestroyIcon($handles[0]) | Out-Null }
 }
 `;
@@ -418,7 +502,8 @@ try {
       8000,
       {
         EVERYTHING_MODERN_ICON_PATH: normalizedPath,
-        EVERYTHING_MODERN_ICON_INDEX: String(Number(iconIndex || 0))
+        EVERYTHING_MODERN_ICON_INDEX: String(Number(iconIndex || 0)),
+        EVERYTHING_MODERN_ICON_SIZE: String(Number(size || 64))
       }
     );
     return base64 ? `data:image/png;base64,${base64.trim()}` : "";
@@ -429,8 +514,48 @@ try {
 
 function shouldUseWindowsIconFallback(icon, candidate, iconIndex) {
   const extension = extname(normalizeIconPath(candidate)).toLowerCase();
-  if (![".exe", ".dll", ".ocx", ".cpl", ".scr", ".bat", ".cmd"].includes(extension)) return false;
+  if (!executableIconExtensions.has(extension)) return false;
   return Number(iconIndex || 0) !== 0 || !icon || icon.length <= 520;
+}
+
+function uniqueIconCandidates(candidates) {
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    const normalizedPath = normalizeIconPath(candidate.path);
+    if (!normalizedPath) return false;
+    const key = `${normalizedPath.toLowerCase()}:${Number(candidate.index || 0)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildIconCandidates(item, iconPath, targetPath, iconIndex) {
+  if (item.isFolder) {
+    return uniqueIconCandidates([{ path: item.path, index: 0 }]);
+  }
+
+  const ownPath = String(item.path || "").trim();
+  const normalizedIconPath = normalizeIconPath(iconPath);
+  const iconExtension = extname(normalizedIconPath).toLowerCase();
+  const targetExtension = extname(normalizeIconPath(targetPath)).toLowerCase();
+  const iconCandidate = normalizedIconPath ? { path: normalizedIconPath, index: iconIndex } : null;
+  const targetCandidate = targetPath ? { path: targetPath, index: 0 } : null;
+  const ownCandidate = ownPath ? { path: ownPath, index: 0 } : null;
+
+  if (iconCandidate && imageIconExtensions.has(iconExtension)) {
+    return uniqueIconCandidates([iconCandidate, targetCandidate, ownCandidate].filter(Boolean));
+  }
+
+  if (iconCandidate && executableIconExtensions.has(iconExtension) && Number(iconIndex || 0) !== 0) {
+    return uniqueIconCandidates([iconCandidate, targetCandidate, ownCandidate].filter(Boolean));
+  }
+
+  if (targetCandidate && executableIconExtensions.has(targetExtension)) {
+    return uniqueIconCandidates([targetCandidate, iconCandidate, ownCandidate].filter(Boolean));
+  }
+
+  return uniqueIconCandidates([iconCandidate, targetCandidate, ownCandidate].filter(Boolean));
 }
 
 function readUrlIconMetadata(fullPath) {
@@ -536,41 +661,50 @@ async function getItemIcon(item) {
   const iconPath = String(item.iconPath || shortcutMetadata.iconPath || "").trim();
   const targetPath = String(item.targetPath || shortcutMetadata.targetPath || "").trim();
   const iconIndex = Number(item.iconIndex ?? shortcutMetadata.iconIndex ?? 0);
-  const sourcePath = iconPath || targetPath || item.path;
+  const candidates = buildIconCandidates(item, iconPath, targetPath, iconIndex);
   const pathScopedExtensions = new Set(["exe", "dll", "ocx", "cpl", "scr", "bat", "cmd", "lnk", "url"]);
+  const primaryCandidate = candidates[0] || { path: item.path, index: 0 };
   const cacheKey =
-    item.isFolder || pathScopedExtensions.has(extension)
-      ? `path:${sourcePath || item.path}:${iconIndex}`
+    item.isFolder
+      ? "__folder"
+      : pathScopedExtensions.has(extension)
+        ? `path:${normalizeIconPath(primaryCandidate.path) || item.path}:${Number(primaryCandidate.index || 0)}`
       : `ext:${extension || item.path}`;
   if (iconCache.has(cacheKey)) return iconCache.get(cacheKey);
 
-  const candidates = [
-    { path: iconPath, index: iconIndex },
-    { path: targetPath, index: 0 },
-    { path: item.path, index: 0 }
-  ].filter((candidate) => Boolean(candidate.path));
+  const diskCacheKey = getDiskIconCacheKey(item, cacheKey, primaryCandidate);
+  const cachedIcon = readDiskIconCache(diskCacheKey);
+  if (cachedIcon) {
+    iconCache.set(cacheKey, cachedIcon);
+    return cachedIcon;
+  }
 
   for (const candidate of candidates) {
     const imageIcon = getImageFileIcon(candidate.path);
     if (imageIcon) {
-      iconCache.set(cacheKey, imageIcon);
-      return imageIcon;
+      return rememberIcon(cacheKey, diskCacheKey, imageIcon);
     }
 
     try {
       const normalizedPath = normalizeIconPath(candidate.path);
-      const image = await app.getFileIcon(normalizedPath, { size: "small" });
+      const candidateExtension = extname(normalizedPath).toLowerCase();
+      if (executableIconExtensions.has(candidateExtension) || !candidateExtension) {
+        const extractedIcon = await extractWindowsIcon(normalizedPath, candidate.index, 64);
+        if (extractedIcon) {
+          return rememberIcon(cacheKey, diskCacheKey, extractedIcon);
+        }
+      }
+
+      const image = await app.getFileIcon(normalizedPath, { size: "large" });
       const icon = image.isEmpty() ? "" : image.toDataURL();
       if (shouldUseWindowsIconFallback(icon, normalizedPath, candidate.index)) {
-        const extractedIcon = await extractWindowsIcon(normalizedPath, candidate.index);
+        const extractedIcon = await extractWindowsIcon(normalizedPath, candidate.index, 64);
         if (extractedIcon) {
-          iconCache.set(cacheKey, extractedIcon);
-          return extractedIcon;
+          return rememberIcon(cacheKey, diskCacheKey, extractedIcon);
         }
       }
       if (icon) {
-        iconCache.set(cacheKey, icon);
-        return icon;
+        return rememberIcon(cacheKey, diskCacheKey, icon);
       }
     } catch {
       // Try the next available icon source.
@@ -681,7 +815,9 @@ function createWindow() {
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: true,
+      spellcheck: false
     }
   });
   mainWindow = win;
@@ -697,6 +833,15 @@ function createWindow() {
 
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
+  });
+
+  win.on("hide", () => {
+    iconCache.clear();
+    win.webContents.send("window:visibility", false);
+  });
+
+  win.on("show", () => {
+    win.webContents.send("window:visibility", true);
   });
 
   win.on("blur", () => {
@@ -748,6 +893,11 @@ ipcMain.handle("desktop:list-folder", (_event, folder) => listFolderItems(folder
 ipcMain.handle("system:get-settings", () => getPublicSystemSettings());
 
 ipcMain.handle("window:getLaunchMode", () => launchMode);
+
+ipcMain.handle("system:trim-memory", () => {
+  iconCache.clear();
+  return true;
+});
 
 ipcMain.handle("system:update-settings", (_event, patch) => {
   systemSettings = normalizeSystemSettings({ ...systemSettings, ...(patch || {}) });

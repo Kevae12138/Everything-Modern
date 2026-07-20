@@ -5,6 +5,8 @@ import {
   Folder,
   FolderOpen,
   Check,
+  LayoutGrid,
+  List,
   Loader2,
   Maximize2,
   Minus,
@@ -21,11 +23,15 @@ import {
 } from "lucide-react";
 import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
-const limit = 200;
+const limit = 80;
 const appearanceVersion = "2026-07-system-settings-1";
 const allDesktopCategoryId = "__all";
 const iconCache = new Map<string, string>();
 const iconRequests = new Map<string, Promise<string>>();
+const iconQueue: Array<() => void> = [];
+let activeIconRequests = 0;
+const maxActiveIconRequests = 3;
+const maxMemoryIcons = 96;
 
 type Appearance = {
   windowRadius: number;
@@ -51,6 +57,18 @@ type DesktopCategory = {
   id: string;
   name: string;
   itemPaths: string[];
+};
+
+type DesktopViewMode = "list" | "grid";
+type DesktopSortMode = "name-ascending" | "name-descending" | "custom";
+
+type DesktopDisplaySettings = {
+  listIconSize: number;
+  gridIconSize: number;
+  nameSize: number;
+  rowGap: number;
+  gridTileSize: number;
+  listRowHeight: number;
 };
 
 const defaultAppearance: Appearance = {
@@ -90,6 +108,36 @@ const kindOptions: { label: string; value: SearchKind }[] = [
 const orderOptions: { label: string; value: SearchOrder }[] = [
   { label: "升序", value: "ascending" },
   { label: "降序", value: "descending" }
+];
+
+const desktopSortOptions: { label: string; value: DesktopSortMode }[] = [
+  { label: "名称升序", value: "name-ascending" },
+  { label: "名称降序", value: "name-descending" },
+  { label: "自定义排序", value: "custom" }
+];
+
+const defaultDesktopDisplaySettings: DesktopDisplaySettings = {
+  listIconSize: 16,
+  gridIconSize: 48,
+  nameSize: 12,
+  rowGap: 10,
+  gridTileSize: 104,
+  listRowHeight: 29
+};
+
+const desktopDisplayFields: {
+  key: keyof DesktopDisplaySettings;
+  label: string;
+  min: number;
+  max: number;
+  unit: string;
+}[] = [
+  { key: "listIconSize", label: "列表图标", min: 14, max: 32, unit: "px" },
+  { key: "gridIconSize", label: "网格图标", min: 24, max: 72, unit: "px" },
+  { key: "gridTileSize", label: "网格方框", min: 84, max: 168, unit: "px" },
+  { key: "nameSize", label: "名称大小", min: 10, max: 16, unit: "px" },
+  { key: "rowGap", label: "行距", min: 4, max: 22, unit: "px" },
+  { key: "listRowHeight", label: "列表行高", min: 24, max: 44, unit: "px" }
 ];
 
 const appearanceFields: {
@@ -144,6 +192,38 @@ function loadDesktopCategories() {
   }
 }
 
+function loadDesktopSortMode(): DesktopSortMode {
+  const saved = localStorage.getItem("desktopSortMode");
+  return saved === "name-descending" || saved === "custom" ? saved : "name-ascending";
+}
+
+function loadDesktopCustomOrder() {
+  try {
+    const saved = localStorage.getItem("desktopCustomOrder");
+    const order = saved ? (JSON.parse(saved) as string[]) : [];
+    return order.filter((path) => typeof path === "string" && path);
+  } catch {
+    return [];
+  }
+}
+
+function loadDesktopDisplaySettings() {
+  try {
+    const saved = localStorage.getItem("desktopDisplaySettings");
+    const settings = saved ? { ...defaultDesktopDisplaySettings, ...JSON.parse(saved) } : defaultDesktopDisplaySettings;
+    return {
+      listIconSize: Math.min(Math.max(Number(settings.listIconSize) || defaultDesktopDisplaySettings.listIconSize, 14), 32),
+      gridIconSize: Math.min(Math.max(Number(settings.gridIconSize ?? settings.iconSize) || defaultDesktopDisplaySettings.gridIconSize, 24), 72),
+      nameSize: Math.min(Math.max(Number(settings.nameSize) || defaultDesktopDisplaySettings.nameSize, 10), 16),
+      rowGap: Math.min(Math.max(Number(settings.rowGap) || defaultDesktopDisplaySettings.rowGap, 4), 22),
+      gridTileSize: Math.min(Math.max(Number(settings.gridTileSize) || defaultDesktopDisplaySettings.gridTileSize, 84), 168),
+      listRowHeight: Math.min(Math.max(Number(settings.listRowHeight) || defaultDesktopDisplaySettings.listRowHeight, 24), 44)
+    };
+  } catch {
+    return defaultDesktopDisplaySettings;
+  }
+}
+
 function formatSize(size: number, isFolder: boolean) {
   if (isFolder) return "";
   if (!size) return "0 B";
@@ -191,6 +271,70 @@ function iconCacheKey(item: IconSourceItem) {
   return `ext:${extension || item.path}`;
 }
 
+function scheduleIconQueue() {
+  const idleCallback = window.requestIdleCallback;
+  if (idleCallback) {
+    idleCallback(() => runNextIconJobs(), { timeout: 500 });
+    return;
+  }
+  window.setTimeout(runNextIconJobs, 50);
+}
+
+function runNextIconJobs() {
+  while (activeIconRequests < maxActiveIconRequests && iconQueue.length) {
+    const job = iconQueue.shift();
+    if (job) job();
+  }
+}
+
+function rememberIconInMemory(key: string, icon: string) {
+  iconCache.delete(key);
+  iconCache.set(key, icon);
+  while (iconCache.size > maxMemoryIcons) {
+    const oldestKey = iconCache.keys().next().value;
+    if (!oldestKey) break;
+    iconCache.delete(oldestKey);
+  }
+}
+
+function clearRendererMemoryCache() {
+  iconCache.clear();
+  iconRequests.clear();
+  iconQueue.length = 0;
+}
+
+function requestIcon(item: IconSourceItem, key: string) {
+  const cached = iconCache.get(key);
+  if (cached) return Promise.resolve(cached);
+
+  const existing = iconRequests.get(key);
+  if (existing) return existing;
+
+  const request = new Promise<string>((resolve, reject) => {
+    iconQueue.push(() => {
+      activeIconRequests += 1;
+      window.everything
+        .getIcon({
+          path: item.path,
+          extension: item.extension,
+          isFolder: item.isFolder,
+          targetPath: item.targetPath,
+          iconPath: item.iconPath,
+          iconIndex: item.iconIndex
+        })
+        .then(resolve, reject)
+        .finally(() => {
+          activeIconRequests = Math.max(0, activeIconRequests - 1);
+          iconRequests.delete(key);
+          runNextIconJobs();
+        });
+    });
+    scheduleIconQueue();
+  });
+  iconRequests.set(key, request);
+  return request;
+}
+
 function shortcutFromEvent(event: KeyboardEvent<HTMLInputElement>) {
   if (event.key === "Backspace" || event.key === "Delete") return "";
   const modifierKeys = new Set(["Control", "Shift", "Alt", "Meta"]);
@@ -217,10 +361,42 @@ function shortcutFromEvent(event: KeyboardEvent<HTMLInputElement>) {
 
 function ResultIcon({ item }: { item: IconSourceItem }) {
   const key = iconCacheKey(item);
+  const holderRef = useRef<HTMLSpanElement>(null);
   const [icon, setIcon] = useState(() => iconCache.get(key) ?? "");
+  const [visible, setVisible] = useState(() => Boolean(iconCache.get(key)));
+
+  useEffect(() => {
+    const cached = iconCache.get(key);
+    setIcon(cached ?? "");
+    setVisible(Boolean(cached));
+
+    const node = holderRef.current;
+    if (!node || cached) return;
+    if (!("IntersectionObserver" in window)) {
+      setVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { root: null, rootMargin: "160px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [key]);
 
   useEffect(() => {
     let live = true;
+    if (!visible) {
+      return () => {
+        live = false;
+      };
+    }
+
     const cached = iconCache.get(key);
     if (cached) {
       setIcon(cached);
@@ -229,26 +405,11 @@ function ResultIcon({ item }: { item: IconSourceItem }) {
       };
     }
 
-    let request = iconRequests.get(key);
-    if (!request) {
-      request = window.everything
-        .getIcon({
-          path: item.path,
-          extension: item.extension,
-          isFolder: item.isFolder,
-          targetPath: item.targetPath,
-          iconPath: item.iconPath,
-          iconIndex: item.iconIndex
-        })
-        .finally(() => iconRequests.delete(key));
-      iconRequests.set(key, request);
-    }
-
-    request
+    requestIcon(item, key)
       .then((nextIcon) => {
         if (!live) return;
         if (nextIcon) {
-          iconCache.set(key, nextIcon);
+          rememberIconInMemory(key, nextIcon);
           setIcon(nextIcon);
         } else {
           setIcon("");
@@ -261,24 +422,30 @@ function ResultIcon({ item }: { item: IconSourceItem }) {
     return () => {
       live = false;
     };
-  }, [item.extension, item.iconIndex, item.iconPath, item.isFolder, item.path, item.targetPath, key]);
+  }, [item.extension, item.iconIndex, item.iconPath, item.isFolder, item.path, item.targetPath, key, visible]);
 
+  const fallback = item.isFolder ? <Folder size={16} /> : <File size={16} />;
   if (icon) {
     return (
-      <img
-        className="file-icon"
-        src={icon}
-        alt=""
-        aria-hidden="true"
-        onError={() => {
-          iconCache.delete(key);
-          setIcon("");
-        }}
-      />
+      <span ref={holderRef} className="result-icon" aria-hidden="true">
+        <img
+          className="file-icon"
+          src={icon}
+          alt=""
+          onError={() => {
+            iconCache.delete(key);
+            setIcon("");
+          }}
+        />
+      </span>
     );
   }
 
-  return item.isFolder ? <Folder size={16} /> : <File size={16} />;
+  return (
+    <span ref={holderRef} className="result-icon" aria-hidden="true">
+      {fallback}
+    </span>
+  );
 }
 
 function SelectMenu<T extends string>({
@@ -359,9 +526,15 @@ export function App() {
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
   const [desktopItems, setDesktopItems] = useState<DesktopItem[]>([]);
   const [desktopCategories, setDesktopCategories] = useState<DesktopCategory[]>(loadDesktopCategories);
+  const [desktopViewMode, setDesktopViewMode] = useState<DesktopViewMode>("list");
+  const [desktopSortMode, setDesktopSortMode] = useState<DesktopSortMode>(loadDesktopSortMode);
+  const [desktopCustomOrder, setDesktopCustomOrder] = useState<string[]>(loadDesktopCustomOrder);
+  const [desktopDisplaySettings, setDesktopDisplaySettings] = useState<DesktopDisplaySettings>(loadDesktopDisplaySettings);
+  const [desktopDisplayOpen, setDesktopDisplayOpen] = useState(false);
   const [selectedDesktopCategoryId, setSelectedDesktopCategoryId] = useState(allDesktopCategoryId);
   const [desktopEditMode, setDesktopEditMode] = useState(false);
   const [draggedDesktopCategoryId, setDraggedDesktopCategoryId] = useState("");
+  const [draggedDesktopItemPath, setDraggedDesktopItemPath] = useState("");
   const [searchResultsRevealed, setSearchResultsRevealed] = useState(true);
   const [launchMode, setLaunchMode] = useState<LaunchMode>("normal");
   const [shortcutRecording, setShortcutRecording] = useState(false);
@@ -379,6 +552,7 @@ export function App() {
   const [offset, setOffset] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const draggedDesktopCategoryIdRef = useRef("");
+  const draggedDesktopItemPathRef = useRef("");
 
   const selected = useMemo(() => items.find((item) => item.id === selectedId) ?? null, [items, selectedId]);
   const canLoadMore = items.length < total;
@@ -394,7 +568,26 @@ export function App() {
     const itemSet = new Set(selectedDesktopCategory.itemPaths);
     return desktopItems.filter((item) => itemSet.has(item.path));
   }, [desktopCategories, desktopItems, selectedDesktopCategory]);
-  const desktopDisplayItems = desktopFolderStack.length ? desktopFolderItems : selectedDesktopItems;
+  const rawDesktopDisplayItems = desktopFolderStack.length ? desktopFolderItems : selectedDesktopItems;
+  const desktopDisplayItems = useMemo(() => {
+    const collator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
+    const itemsToSort = [...rawDesktopDisplayItems];
+    if (desktopSortMode === "name-ascending") {
+      return itemsToSort.sort((a, b) => collator.compare(a.name, b.name));
+    }
+    if (desktopSortMode === "name-descending") {
+      return itemsToSort.sort((a, b) => collator.compare(b.name, a.name));
+    }
+    const orderMap = new Map(desktopCustomOrder.map((path, index) => [path, index]));
+    return itemsToSort.sort((a, b) => {
+      const aOrder = orderMap.get(a.path);
+      const bOrder = orderMap.get(b.path);
+      if (aOrder !== undefined && bOrder !== undefined) return aOrder - bOrder;
+      if (aOrder !== undefined) return -1;
+      if (bOrder !== undefined) return 1;
+      return collator.compare(a.name, b.name);
+    });
+  }, [desktopCustomOrder, desktopSortMode, rawDesktopDisplayItems]);
 
   const appearanceStyle = {
     "--window-radius": `${appearance.windowRadius}px`,
@@ -405,7 +598,13 @@ export function App() {
     "--font-size": `${appearance.fontSize}px`,
     "--table-font-size": `${appearance.tableFontSize}px`,
     "--toolbar-height": `${appearance.toolbarHeight}px`,
-    "--border": `rgb(${appearance.borderStrength} ${appearance.borderStrength + 8} ${appearance.borderStrength + 18})`
+    "--border": `rgb(${appearance.borderStrength} ${appearance.borderStrength + 8} ${appearance.borderStrength + 18})`,
+    "--desktop-list-icon-size": `${desktopDisplaySettings.listIconSize}px`,
+    "--desktop-grid-icon-size": `${desktopDisplaySettings.gridIconSize}px`,
+    "--desktop-name-size": `${desktopDisplaySettings.nameSize}px`,
+    "--desktop-row-gap": `${desktopDisplaySettings.rowGap}px`,
+    "--desktop-grid-tile-size": `${desktopDisplaySettings.gridTileSize}px`,
+    "--desktop-list-row-height": `${desktopDisplaySettings.listRowHeight}px`
   } as CSSProperties;
 
   const options = useMemo<EverythingSearchOptions>(
@@ -434,6 +633,22 @@ export function App() {
   }, [desktopCategories]);
 
   useEffect(() => {
+    localStorage.setItem("desktopSortMode", desktopSortMode);
+  }, [desktopSortMode]);
+
+  useEffect(() => {
+    localStorage.setItem("desktopCustomOrder", JSON.stringify(desktopCustomOrder));
+  }, [desktopCustomOrder]);
+
+  useEffect(() => {
+    localStorage.setItem("desktopDisplaySettings", JSON.stringify(desktopDisplaySettings));
+  }, [desktopDisplaySettings]);
+
+  useEffect(() => {
+    if (!desktopEditMode) setDesktopDisplayOpen(false);
+  }, [desktopEditMode]);
+
+  useEffect(() => {
     localStorage.setItem("rememberSearchLogic", String(rememberSearchLogic));
     if (rememberSearchLogic) localStorage.setItem("searchPrefs", JSON.stringify(searchPrefs));
   }, [rememberSearchLogic, searchPrefs]);
@@ -448,8 +663,23 @@ export function App() {
     window.everything.getSystemSettings().then(setSystemSettings).catch((err) => setError(String(err.message || err)));
     window.everything.getLaunchMode().then(applyLaunchMode).catch(() => undefined);
     const removeLaunchListener = window.everything.onLaunchMode(applyLaunchMode);
+    const removeVisibilityListener = window.everything.onWindowVisibility((visible) => {
+      if (visible) return;
+      clearRendererMemoryCache();
+      setItems([]);
+      setSelectedId("");
+      setTotal(0);
+      setOffset(0);
+      setLoading(false);
+      setDesktopFolderStack([]);
+      setDesktopFolderItems([]);
+      window.everything.trimMemory().catch(() => undefined);
+    });
     refreshDesktopItems();
-    return removeLaunchListener;
+    return () => {
+      removeLaunchListener();
+      removeVisibilityListener();
+    };
   }, []);
 
   useEffect(() => {
@@ -706,6 +936,45 @@ export function App() {
     );
   }
 
+  function toggleDesktopViewMode() {
+    setDesktopViewMode((current) => (current === "list" ? "grid" : "list"));
+  }
+
+  function changeDesktopSortMode(value: DesktopSortMode) {
+    if (value === "custom") {
+      const displayedPathSet = new Set(desktopDisplayItems.map((item) => item.path));
+      setDesktopCustomOrder((current) => [
+        ...desktopDisplayItems.map((item) => item.path),
+        ...current.filter((path) => !displayedPathSet.has(path))
+      ]);
+    }
+    setDesktopSortMode(value);
+  }
+
+  function updateDesktopDisplaySetting(key: keyof DesktopDisplaySettings, value: number) {
+    setDesktopDisplaySettings((current) => ({ ...current, [key]: value }));
+  }
+
+  function resetDesktopDisplaySettings() {
+    setDesktopDisplaySettings(defaultDesktopDisplaySettings);
+  }
+
+  function reorderDesktopItem(targetPath: string) {
+    const sourcePath = draggedDesktopItemPathRef.current || draggedDesktopItemPath;
+    if (!desktopEditMode || desktopSortMode !== "custom" || !sourcePath || sourcePath === targetPath) return;
+    const currentPaths = desktopDisplayItems.map((item) => item.path);
+    const fromIndex = currentPaths.indexOf(sourcePath);
+    const toIndex = currentPaths.indexOf(targetPath);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const nextPaths = [...currentPaths];
+    const [moved] = nextPaths.splice(fromIndex, 1);
+    nextPaths.splice(toIndex, 0, moved);
+    const nextPathSet = new Set(nextPaths);
+    setDesktopCustomOrder((current) => [...nextPaths, ...current.filter((path) => !nextPathSet.has(path))]);
+    draggedDesktopItemPathRef.current = "";
+    setDraggedDesktopItemPath("");
+  }
+
   function reorderDesktopCategory(targetId: string) {
     const sourceId = draggedDesktopCategoryIdRef.current || draggedDesktopCategoryId;
     if (!desktopEditMode || !sourceId || sourceId === targetId) return;
@@ -763,6 +1032,15 @@ export function App() {
                 <RefreshCw size={14} />
               </button>
               <button
+                className="desktop-view-toggle"
+                title={`切换显示：当前${desktopViewMode === "list" ? "列表" : "网格"}`}
+                aria-label={`切换显示：当前${desktopViewMode === "list" ? "列表" : "网格"}`}
+                onClick={toggleDesktopViewMode}
+              >
+                {desktopViewMode === "list" ? <List size={14} /> : <LayoutGrid size={14} />}
+                <small>{desktopViewMode === "list" ? "列表" : "网格"}</small>
+              </button>
+              <button
                 className={desktopEditMode ? "desktop-edit-toggle active" : "desktop-edit-toggle"}
                 title={desktopEditMode ? "完成编辑" : "编辑分类"}
                 onClick={() => setDesktopEditMode((current) => !current)}
@@ -771,11 +1049,21 @@ export function App() {
                 <span>{desktopEditMode ? "完成" : "编辑"}</span>
               </button>
               {desktopEditMode && (
-                <button title="新建分类" onClick={createDesktopCategory}>
-                  <Plus size={14} />
-                </button>
+                <>
+                  <button title="显示调整" onClick={() => setDesktopDisplayOpen(true)}>
+                    <Palette size={14} />
+                  </button>
+                  <button title="新建分类" onClick={createDesktopCategory}>
+                    <Plus size={14} />
+                  </button>
+                </>
               )}
             </div>
+          </div>
+
+          <div className="desktop-board-controls">
+            <span>排序</span>
+            <SelectMenu value={desktopSortMode} options={desktopSortOptions} onChange={changeDesktopSortMode} width={124} />
           </div>
 
           <div className="category-list">
@@ -834,7 +1122,7 @@ export function App() {
             )}
           </div>
 
-          {systemSettings?.showDesktopTree && (
+          {systemSettings?.showDesktopTree && desktopFolderStack.length > 0 && (
             <div className="desktop-breadcrumb">
               <button type="button" onClick={goDesktopFolderRoot}>
                 {selectedDesktopCategory?.name ?? "全部桌面"}
@@ -848,41 +1136,92 @@ export function App() {
           )}
 
           <div className="desktop-result-wrap">
-            <table className="result-table desktop-result-table">
-              <thead>
-                <tr>
-                  <th className="desktop-name-col">名称</th>
-                  {desktopEditMode && <th className="desktop-type-col">类型</th>}
-                  {desktopEditMode && <th className="desktop-category-col">分类</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {desktopDisplayItems.map((item) => (
-                  <tr key={item.path} title={item.path} onDoubleClick={() => openDesktopFolder(item)}>
-                    <td className="name-cell desktop-name-cell">
-                      <ResultIcon item={item} />
-                      <span>{item.name}</span>
-                    </td>
-                    {desktopEditMode && <td>{formatDesktopType(item)}</td>}
-                    {desktopEditMode && (
-                      <td className="desktop-category-cell">
-                        <select
-                          value={findDesktopCategoryId(item.path)}
-                          onChange={(event) => assignDesktopItem(item.path, event.target.value)}
-                        >
-                          <option value="">未分类</option>
-                          {desktopCategories.map((category) => (
-                            <option key={category.id} value={category.id}>
-                              {category.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    )}
+            {desktopViewMode === "list" ? (
+              <table className="result-table desktop-result-table">
+                <thead>
+                  <tr>
+                    <th className="desktop-name-col">名称</th>
+                    {desktopEditMode && <th className="desktop-type-col">类型</th>}
+                    {desktopEditMode && <th className="desktop-category-col">分类</th>}
                   </tr>
+                </thead>
+                <tbody>
+                  {desktopDisplayItems.map((item) => (
+                    <tr
+                      key={item.path}
+                      className={draggedDesktopItemPath === item.path ? "dragging" : ""}
+                      title={item.path}
+                      draggable={desktopEditMode && desktopSortMode === "custom"}
+                      onDragStart={() => {
+                        if (!desktopEditMode || desktopSortMode !== "custom") return;
+                        draggedDesktopItemPathRef.current = item.path;
+                        setDraggedDesktopItemPath(item.path);
+                      }}
+                      onDragOver={(event) => {
+                        if (desktopEditMode && desktopSortMode === "custom" && draggedDesktopItemPath) event.preventDefault();
+                      }}
+                      onDrop={() => reorderDesktopItem(item.path)}
+                      onDragEnd={() => {
+                        draggedDesktopItemPathRef.current = "";
+                        setDraggedDesktopItemPath("");
+                      }}
+                      onDoubleClick={() => openDesktopFolder(item)}
+                    >
+                      <td className="name-cell desktop-name-cell">
+                        <ResultIcon item={item} />
+                        <span>{item.name}</span>
+                      </td>
+                      {desktopEditMode && <td>{formatDesktopType(item)}</td>}
+                      {desktopEditMode && (
+                        <td className="desktop-category-cell">
+                          <select
+                            value={findDesktopCategoryId(item.path)}
+                            onChange={(event) => assignDesktopItem(item.path, event.target.value)}
+                          >
+                            <option value="">未分类</option>
+                            {desktopCategories.map((category) => (
+                              <option key={category.id} value={category.id}>
+                                {category.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="desktop-grid">
+                {desktopDisplayItems.map((item) => (
+                  <div
+                    key={item.path}
+                    className={draggedDesktopItemPath === item.path ? "desktop-grid-item dragging" : "desktop-grid-item"}
+                    title={item.path}
+                    draggable={desktopEditMode && desktopSortMode === "custom"}
+                    onDragStart={() => {
+                      if (!desktopEditMode || desktopSortMode !== "custom") return;
+                      draggedDesktopItemPathRef.current = item.path;
+                      setDraggedDesktopItemPath(item.path);
+                    }}
+                    onDragOver={(event) => {
+                      if (desktopEditMode && desktopSortMode === "custom" && draggedDesktopItemPath) event.preventDefault();
+                    }}
+                    onDrop={() => reorderDesktopItem(item.path)}
+                    onDragEnd={() => {
+                      draggedDesktopItemPathRef.current = "";
+                      setDraggedDesktopItemPath("");
+                    }}
+                    onDoubleClick={() => openDesktopFolder(item)}
+                  >
+                    <div className="desktop-grid-icon">
+                      <ResultIcon item={item} />
+                    </div>
+                    <div className="desktop-grid-name">{item.name}</div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
             {!desktopDisplayItems.length && <div className="desktop-empty">暂无项目</div>}
           </div>
         </aside>
@@ -1047,6 +1386,48 @@ export function App() {
 
             <div className="settings-foot">
               <button onClick={resetAppearance}>
+                <RotateCcw size={14} />
+                恢复默认
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {desktopDisplayOpen && (
+        <div className="settings-backdrop" onMouseDown={() => setDesktopDisplayOpen(false)}>
+          <aside className="settings-panel desktop-display-panel" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="settings-head">
+              <div>
+                <h2>桌面显示</h2>
+                <p>调整桌面分类的列表和网格显示。</p>
+              </div>
+              <button title="关闭" onClick={() => setDesktopDisplayOpen(false)}>
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="desktop-display-form">
+              {desktopDisplayFields.map((field) => (
+                <label key={field.key}>
+                  <span>{field.label}</span>
+                  <input
+                    type="range"
+                    min={field.min}
+                    max={field.max}
+                    value={desktopDisplaySettings[field.key]}
+                    onChange={(event) => updateDesktopDisplaySetting(field.key, Number(event.target.value))}
+                  />
+                  <strong>
+                    {desktopDisplaySettings[field.key]}
+                    {field.unit}
+                  </strong>
+                </label>
+              ))}
+            </div>
+
+            <div className="desktop-display-actions">
+              <button className="reset-button" type="button" onClick={resetDesktopDisplaySettings}>
                 <RotateCcw size={14} />
                 恢复默认
               </button>

@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld("everything", {
     ipcRenderer.on("window:launch-mode", listener);
     return () => ipcRenderer.removeListener("window:launch-mode", listener);
   },
+  onWindowVisibility: (callback) => {
+    const listener = (_event, visible) => callback(Boolean(visible));
+    ipcRenderer.on("window:visibility", listener);
+    return () => ipcRenderer.removeListener("window:visibility", listener);
+  },
+  trimMemory: () => ipcRenderer.invoke("system:trim-memory"),
   minimize: () => ipcRenderer.invoke("window:minimize"),
   toggleMaximize: () => ipcRenderer.invoke("window:toggleMaximize"),
   setWindowMode: (mode) => ipcRenderer.invoke("window:setMode", mode),
