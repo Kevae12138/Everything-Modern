@@ -4,6 +4,47 @@ All notable changes to Everything Modern are documented in this file.
 
 Everything Modern 的重要变更都会记录在此文件中。
 
+## 0.1.2 - 2026-07-21
+
+### Added / 新增
+
+- Added desktop category layout controls for vertical or horizontal category placement.
+  新增桌面分类排列方向设置，支持垂直或水平显示分类。
+- Added desktop category placement controls for showing categories at the top or bottom of the desktop module.
+  新增桌面分类位置设置，支持将分类放在桌面分类模块顶部或底部。
+- Added a horizontal category row limit setting with a range from 1 to 6 categories per row.
+  新增水平分类每行数量设置，可在 1 到 6 个分类之间调整。
+- Added three desktop category label styles: full fill, name badge, and name underline.
+  新增三种分类标签样式：整块填充、名称色块、名称下划线。
+- Added per-category color settings from the desktop category right-click menu.
+  新增单个分类颜色设置，可通过右键分类并选择“颜色设置”进入。
+- Added per-category color controls for category text, filled background, underline, and name badge colors.
+  新增每个分类独立的颜色控制，可调整分类名颜色、整块填充色、下划线颜色和名称色块颜色。
+
+### Changed / 改进
+
+- Desktop category names can now be temporarily blank while edit mode is active.
+  桌面分类名称在编辑模式中允许临时留空。
+- The desktop category appearance dialog now keeps category label style selection separate from per-category colors.
+  桌面分类外观设置中的“分类标签”只保留标签样式选择，分类颜色改为单独右键设置。
+- Desktop category label colors now remain visible in the normal state, while the selected category uses the default selected fill.
+  桌面分类标签颜色现在会在常态显示，选中分类时统一使用默认选中填充色。
+- The default fill color for the full-fill category label style is now white.
+  “整块填充”分类标签样式的默认方框颜色改为白色。
+- Desktop category assignment dropdowns now use the same custom dropdown style as the global filters.
+  桌面分类编辑模式中的分类分配下拉框现在与全局筛选下拉框保持一致。
+
+### Fixed / 修复
+
+- Fixed desktop category assignment dropdown popovers being covered by following table rows.
+  修复桌面分类编辑模式中的分类分配下拉选项被后续表格行遮挡的问题。
+- Fixed desktop category assignment dropdown layering by lifting only the dropdown option popover instead of the whole row.
+  修复桌面分类分配下拉框的层级关系，仅提升下拉选项浮层，不再提升整行或单元格。
+- Fixed desktop category assignment dropdown positioning so option popovers stay within the desktop list area and are not covered by other category controls.
+  修复桌面分类分配下拉选项的位置计算，使其不超出桌面列表顶部，也不会被其他分类控件遮挡。
+- Prevents leaving desktop category edit mode while any category name is blank, and prompts the user to complete the name first.
+  当存在空分类名时禁止退出桌面分类编辑模式，并提示用户先填写分类名。
+
 ## 0.1.1 - 2026-07-20
 
 ### Added / 新增

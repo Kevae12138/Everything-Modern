@@ -15,17 +15,17 @@ Everything Modern is a modern Windows shell for Everything search. It wraps Ever
 
 - Repository: https://github.com/Kevae12138/Everything-Modern
 - Author: Kevae12138
-- Current version: `v0.1.1`
+- Current version: `v0.1.2`
 
 ## Download
 
 End users do not need to download the source code or build the app manually. Download the Windows package from Releases:
 
-[Download Everything Modern v0.1.1](https://github.com/Kevae12138/Everything-Modern/releases/tag/v0.1.1)
+[Download Everything Modern v0.1.2](https://github.com/Kevae12138/Everything-Modern/releases/tag/v0.1.2)
 
 Usage:
 
-1. Download `Everything-Modern-v0.1.1-win-x64.zip`
+1. Download `Everything-Modern-v0.1.2-win-x64.zip`
 2. Extract the archive
 3. Run `Everything Modern.exe`
 
@@ -119,6 +119,12 @@ Supported actions:
 - Delete categories
 - Reorder categories by dragging in edit mode
 - Show type and category selectors in edit mode
+- Choose vertical or horizontal category placement
+- Place categories at the top or bottom of the desktop module
+- Limit horizontal category rows from 1 to 6 categories per row
+- Choose category label styles: full fill, name badge, or name underline
+- Right-click a category to customize its own text, fill, underline, and badge colors
+- Use consistent custom dropdowns when assigning desktop items to categories
 - Keep the normal view minimal outside edit mode
 
 ### Tree-Style Folder Browsing

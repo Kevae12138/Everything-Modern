@@ -21,7 +21,8 @@ import {
   ChevronDown,
   X
 } from "lucide-react";
-import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const limit = 80;
 const appearanceVersion = "2026-07-system-settings-1";
@@ -57,10 +58,21 @@ type DesktopCategory = {
   id: string;
   name: string;
   itemPaths: string[];
+  colors?: DesktopCategoryColors;
 };
 
 type DesktopViewMode = "list" | "grid";
 type DesktopSortMode = "name-ascending" | "name-descending" | "custom";
+type DesktopCategoryOrientation = "vertical" | "horizontal";
+type DesktopCategoryPlacement = "top" | "bottom";
+type DesktopCategoryLabelStyle = "filled" | "badge" | "underline";
+
+type DesktopCategoryColors = {
+  name: string;
+  fill: string;
+  underline: string;
+  badge: string;
+};
 
 type DesktopDisplaySettings = {
   listIconSize: number;
@@ -69,7 +81,22 @@ type DesktopDisplaySettings = {
   rowGap: number;
   gridTileSize: number;
   listRowHeight: number;
+  categoryOrientation: DesktopCategoryOrientation;
+  categoryPlacement: DesktopCategoryPlacement;
+  categoryMaxPerRow: number;
+  categoryLabelStyle: DesktopCategoryLabelStyle;
 };
+
+type DesktopDisplayNumberKey =
+  | "listIconSize"
+  | "gridIconSize"
+  | "nameSize"
+  | "rowGap"
+  | "gridTileSize"
+  | "listRowHeight"
+  | "categoryMaxPerRow";
+
+type DesktopCategoryColorKey = keyof DesktopCategoryColors;
 
 const defaultAppearance: Appearance = {
   windowRadius: 18,
@@ -89,6 +116,13 @@ const defaultSearchPrefs: SearchPrefs = {
   order: "ascending",
   matchPath: false,
   regex: false
+};
+
+const defaultDesktopCategoryColors: DesktopCategoryColors = {
+  name: "#344054",
+  fill: "#ffffff",
+  underline: "#3b82f6",
+  badge: "#dbeafe"
 };
 
 const sortOptions: { label: string; value: SearchSort }[] = [
@@ -122,11 +156,15 @@ const defaultDesktopDisplaySettings: DesktopDisplaySettings = {
   nameSize: 12,
   rowGap: 10,
   gridTileSize: 104,
-  listRowHeight: 29
+  listRowHeight: 29,
+  categoryOrientation: "vertical",
+  categoryPlacement: "top",
+  categoryMaxPerRow: 3,
+  categoryLabelStyle: "filled"
 };
 
 const desktopDisplayFields: {
-  key: keyof DesktopDisplaySettings;
+  key: DesktopDisplayNumberKey;
   label: string;
   min: number;
   max: number;
@@ -137,7 +175,34 @@ const desktopDisplayFields: {
   { key: "gridTileSize", label: "网格方框", min: 84, max: 168, unit: "px" },
   { key: "nameSize", label: "名称大小", min: 10, max: 16, unit: "px" },
   { key: "rowGap", label: "行距", min: 4, max: 22, unit: "px" },
-  { key: "listRowHeight", label: "列表行高", min: 24, max: 44, unit: "px" }
+  { key: "listRowHeight", label: "列表行高", min: 24, max: 44, unit: "px" },
+  { key: "categoryMaxPerRow", label: "每行分类", min: 1, max: 6, unit: "个" }
+];
+
+const desktopCategoryOrientationOptions: { label: string; value: DesktopCategoryOrientation }[] = [
+  { label: "垂直", value: "vertical" },
+  { label: "水平", value: "horizontal" }
+];
+
+const desktopCategoryPlacementOptions: { label: string; value: DesktopCategoryPlacement }[] = [
+  { label: "顶部", value: "top" },
+  { label: "底部", value: "bottom" }
+];
+
+const desktopCategoryLabelStyleOptions: { label: string; value: DesktopCategoryLabelStyle }[] = [
+  { label: "整块填充", value: "filled" },
+  { label: "名称色块", value: "badge" },
+  { label: "名称下划线", value: "underline" }
+];
+
+const desktopCategoryColorFields: {
+  key: DesktopCategoryColorKey;
+  label: string;
+}[] = [
+  { key: "name", label: "分类名颜色" },
+  { key: "fill", label: "整块填充色" },
+  { key: "underline", label: "下划线颜色" },
+  { key: "badge", label: "名称色块色" }
 ];
 
 const appearanceFields: {
@@ -186,7 +251,13 @@ function loadDesktopCategories() {
   try {
     const saved = localStorage.getItem("desktopCategories");
     const categories = saved ? (JSON.parse(saved) as DesktopCategory[]) : [];
-    return categories.filter((category) => category.id && category.name && Array.isArray(category.itemPaths));
+    return categories
+      .filter((category) => category.id && typeof category.name === "string" && Array.isArray(category.itemPaths))
+      .map((category) => ({
+        ...category,
+        itemPaths: category.itemPaths.filter((path) => typeof path === "string" && path),
+        colors: normalizeDesktopCategoryColors(category.colors)
+      }));
   } catch {
     return [];
   }
@@ -207,7 +278,7 @@ function loadDesktopCustomOrder() {
   }
 }
 
-function loadDesktopDisplaySettings() {
+function loadDesktopDisplaySettings(): DesktopDisplaySettings {
   try {
     const saved = localStorage.getItem("desktopDisplaySettings");
     const settings = saved ? { ...defaultDesktopDisplaySettings, ...JSON.parse(saved) } : defaultDesktopDisplaySettings;
@@ -217,11 +288,35 @@ function loadDesktopDisplaySettings() {
       nameSize: Math.min(Math.max(Number(settings.nameSize) || defaultDesktopDisplaySettings.nameSize, 10), 16),
       rowGap: Math.min(Math.max(Number(settings.rowGap) || defaultDesktopDisplaySettings.rowGap, 4), 22),
       gridTileSize: Math.min(Math.max(Number(settings.gridTileSize) || defaultDesktopDisplaySettings.gridTileSize, 84), 168),
-      listRowHeight: Math.min(Math.max(Number(settings.listRowHeight) || defaultDesktopDisplaySettings.listRowHeight, 24), 44)
+      listRowHeight: Math.min(Math.max(Number(settings.listRowHeight) || defaultDesktopDisplaySettings.listRowHeight, 24), 44),
+      categoryOrientation: settings.categoryOrientation === "horizontal" ? "horizontal" : "vertical",
+      categoryPlacement: settings.categoryPlacement === "bottom" ? "bottom" : "top",
+      categoryMaxPerRow: Math.min(Math.max(Number(settings.categoryMaxPerRow) || defaultDesktopDisplaySettings.categoryMaxPerRow, 1), 6),
+      categoryLabelStyle:
+        settings.categoryLabelStyle === "badge" || settings.categoryLabelStyle === "underline"
+          ? settings.categoryLabelStyle
+          : "filled"
     };
   } catch {
     return defaultDesktopDisplaySettings;
   }
+}
+
+function normalizeColor(value: unknown, fallback: string) {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+function normalizeDesktopCategoryColors(value: unknown): DesktopCategoryColors {
+  const colors = value && typeof value === "object" ? (value as Partial<DesktopCategoryColors>) : {};
+  return {
+    name: normalizeColor(colors.name, defaultDesktopCategoryColors.name),
+    fill:
+      colors.fill === "#eef5ff"
+        ? defaultDesktopCategoryColors.fill
+        : normalizeColor(colors.fill, defaultDesktopCategoryColors.fill),
+    underline: normalizeColor(colors.underline, defaultDesktopCategoryColors.underline),
+    badge: normalizeColor(colors.badge, defaultDesktopCategoryColors.badge)
+  };
 }
 
 function formatSize(size: number, isFolder: boolean) {
@@ -452,39 +547,102 @@ function SelectMenu<T extends string>({
   value,
   options,
   onChange,
-  width
+  width,
+  className = "",
+  fixedPopover = false
 }: {
   value: T;
   options: { label: string; value: T }[];
   onChange: (value: T) => void;
   width?: number;
+  className?: string;
+  fixedPopover?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [fixedPopoverStyle, setFixedPopoverStyle] = useState<CSSProperties>({});
   const menuRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const selected = options.find((option) => option.value === value) ?? options[0];
+
+  function updateFixedPopoverPosition() {
+    if (!fixedPopover || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const boundary = menuRef.current.closest(".desktop-result-wrap")?.getBoundingClientRect();
+    const gap = 6;
+    const margin = 8;
+    const preferredMaxHeight = 190;
+    const boundaryTop = boundary ? Math.max(margin, boundary.top + 4) : margin;
+    const boundaryBottom = boundary ? Math.min(window.innerHeight - margin, boundary.bottom - 4) : window.innerHeight - margin;
+    const belowSpace = Math.max(0, boundaryBottom - rect.bottom - gap);
+    const aboveSpace = Math.max(0, rect.top - boundaryTop - gap);
+    const naturalHeight = Math.min(preferredMaxHeight, options.length * 28 + 10);
+    const openBelow = belowSpace >= naturalHeight || belowSpace >= aboveSpace;
+    const availableSpace = openBelow ? belowSpace : aboveSpace;
+    const maxHeight = Math.min(preferredMaxHeight, Math.max(0, availableSpace));
+    const top = openBelow ? rect.bottom + gap : Math.max(boundaryTop, rect.top - maxHeight - gap);
+    const left = Math.min(Math.max(margin, rect.left), window.innerWidth - rect.width - margin);
+
+    setFixedPopoverStyle({
+      position: "fixed",
+      top: `${top}px`,
+      left: `${left}px`,
+      width: `${rect.width}px`,
+      minWidth: `${rect.width}px`,
+      maxHeight: `${maxHeight}px`
+    });
+  }
 
   useEffect(() => {
     if (!open) return;
+    updateFixedPopoverPosition();
 
     const closeFromOutside = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !popoverRef.current?.contains(target)) setOpen(false);
     };
     const closeFromKeyboard = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
+    const repositionPopover = () => updateFixedPopoverPosition();
 
     window.addEventListener("pointerdown", closeFromOutside);
     window.addEventListener("keydown", closeFromKeyboard);
+    window.addEventListener("resize", repositionPopover);
+    window.addEventListener("scroll", repositionPopover, true);
     return () => {
       window.removeEventListener("pointerdown", closeFromOutside);
       window.removeEventListener("keydown", closeFromKeyboard);
+      window.removeEventListener("resize", repositionPopover);
+      window.removeEventListener("scroll", repositionPopover, true);
     };
-  }, [open]);
+  }, [fixedPopover, open, options.length]);
+
+  const popover = (
+    <div
+      ref={popoverRef}
+      className={fixedPopover ? "select-popover fixed" : "select-popover"}
+      style={fixedPopover ? fixedPopoverStyle : undefined}
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={option.value === value ? "select-option selected" : "select-option"}
+          onClick={() => {
+            onChange(option.value);
+            setOpen(false);
+          }}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div
       ref={menuRef}
-      className="select-menu"
+      className={["select-menu", open ? "open" : "", className].filter(Boolean).join(" ")}
       style={width ? ({ "--select-width": `${width}px` } as CSSProperties) : undefined}
     >
       <button
@@ -496,23 +654,7 @@ function SelectMenu<T extends string>({
         <span>{selected.label}</span>
         <ChevronDown size={14} />
       </button>
-      {open && (
-        <div className="select-popover">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={option.value === value ? "select-option selected" : "select-option"}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {open && (fixedPopover ? createPortal(popover, document.body) : popover)}
     </div>
   );
 }
@@ -533,6 +675,9 @@ export function App() {
   const [desktopDisplayOpen, setDesktopDisplayOpen] = useState(false);
   const [selectedDesktopCategoryId, setSelectedDesktopCategoryId] = useState(allDesktopCategoryId);
   const [desktopEditMode, setDesktopEditMode] = useState(false);
+  const [desktopEditError, setDesktopEditError] = useState("");
+  const [desktopCategoryMenu, setDesktopCategoryMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [desktopCategoryColorId, setDesktopCategoryColorId] = useState("");
   const [draggedDesktopCategoryId, setDraggedDesktopCategoryId] = useState("");
   const [draggedDesktopItemPath, setDraggedDesktopItemPath] = useState("");
   const [searchResultsRevealed, setSearchResultsRevealed] = useState(true);
@@ -604,8 +749,14 @@ export function App() {
     "--desktop-name-size": `${desktopDisplaySettings.nameSize}px`,
     "--desktop-row-gap": `${desktopDisplaySettings.rowGap}px`,
     "--desktop-grid-tile-size": `${desktopDisplaySettings.gridTileSize}px`,
-    "--desktop-list-row-height": `${desktopDisplaySettings.listRowHeight}px`
+    "--desktop-list-row-height": `${desktopDisplaySettings.listRowHeight}px`,
+    "--desktop-category-columns": desktopDisplaySettings.categoryMaxPerRow
   } as CSSProperties;
+
+  const desktopCategoryColorTarget = desktopCategories.find((category) => category.id === desktopCategoryColorId) ?? null;
+  const desktopCategoryMenuTarget = desktopCategoryMenu
+    ? desktopCategories.find((category) => category.id === desktopCategoryMenu.id) ?? null
+    : null;
 
   const options = useMemo<EverythingSearchOptions>(
     () => ({
@@ -647,6 +798,22 @@ export function App() {
   useEffect(() => {
     if (!desktopEditMode) setDesktopDisplayOpen(false);
   }, [desktopEditMode]);
+
+  useEffect(() => {
+    if (!desktopCategoryMenu) return;
+
+    const closeMenu = () => setDesktopCategoryMenu(null);
+    const closeFromKeyboard = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setDesktopCategoryMenu(null);
+    };
+
+    window.addEventListener("pointerdown", closeMenu);
+    window.addEventListener("keydown", closeFromKeyboard);
+    return () => {
+      window.removeEventListener("pointerdown", closeMenu);
+      window.removeEventListener("keydown", closeFromKeyboard);
+    };
+  }, [desktopCategoryMenu]);
 
   useEffect(() => {
     localStorage.setItem("rememberSearchLogic", String(rememberSearchLogic));
@@ -916,10 +1083,10 @@ export function App() {
   }
 
   function renameDesktopCategory(id: string, name: string) {
-    const nextName = name.trim();
     setDesktopCategories((current) =>
-      current.map((category) => (category.id === id ? { ...category, name: nextName || category.name } : category))
+      current.map((category) => (category.id === id ? { ...category, name } : category))
     );
+    if (name.trim()) setDesktopEditError("");
   }
 
   function findDesktopCategoryId(path: string) {
@@ -951,12 +1118,64 @@ export function App() {
     setDesktopSortMode(value);
   }
 
-  function updateDesktopDisplaySetting(key: keyof DesktopDisplaySettings, value: number) {
+  function toggleDesktopEditMode() {
+    if (!desktopEditMode) {
+      setDesktopEditError("");
+      setDesktopEditMode(true);
+      return;
+    }
+
+    const emptyCategory = desktopCategories.find((category) => !category.name.trim());
+    if (emptyCategory) {
+      setSelectedDesktopCategoryId(emptyCategory.id);
+      setDesktopEditError("分类名不能为空，请填写后再完成编辑。");
+      window.setTimeout(() => window.alert("分类名不能为空，请填写后再完成编辑。"), 0);
+      return;
+    }
+
+    setDesktopCategories((current) => current.map((category) => ({ ...category, name: category.name.trim() })));
+    setDesktopEditError("");
+    setDesktopEditMode(false);
+  }
+
+  function updateDesktopDisplaySetting<K extends keyof DesktopDisplaySettings>(key: K, value: DesktopDisplaySettings[K]) {
     setDesktopDisplaySettings((current) => ({ ...current, [key]: value }));
   }
 
   function resetDesktopDisplaySettings() {
     setDesktopDisplaySettings(defaultDesktopDisplaySettings);
+  }
+
+  function updateDesktopCategoryColor(id: string, key: DesktopCategoryColorKey, value: string) {
+    const nextColor = normalizeColor(value, defaultDesktopCategoryColors[key]);
+    setDesktopCategories((current) =>
+      current.map((category) =>
+        category.id === id
+          ? {
+              ...category,
+              colors: {
+                ...normalizeDesktopCategoryColors(category.colors),
+                [key]: nextColor
+              }
+            }
+          : category
+      )
+    );
+  }
+
+  function resetDesktopCategoryColors(id: string) {
+    setDesktopCategories((current) =>
+      current.map((category) =>
+        category.id === id ? { ...category, colors: { ...defaultDesktopCategoryColors } } : category
+      )
+    );
+  }
+
+  function openDesktopCategoryMenu(event: MouseEvent, categoryId: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedDesktopCategoryId(categoryId);
+    setDesktopCategoryMenu({ id: categoryId, x: event.clientX, y: event.clientY });
   }
 
   function reorderDesktopItem(targetPath: string) {
@@ -991,6 +1210,79 @@ export function App() {
     setDraggedDesktopCategoryId("");
   }
 
+  const desktopBoardClassName = [
+    "desktop-board",
+    desktopEditMode ? "editing" : "",
+    `category-${desktopDisplaySettings.categoryOrientation}`,
+    `category-${desktopDisplaySettings.categoryPlacement}`
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const categoryListClassName = [
+    "category-list",
+    `category-list-${desktopDisplaySettings.categoryOrientation}`,
+    `category-style-${desktopDisplaySettings.categoryLabelStyle}`
+  ].join(" ");
+
+  function desktopCategoryStyle(category?: DesktopCategory | null) {
+    const colors = normalizeDesktopCategoryColors(category?.colors);
+    return {
+      "--desktop-category-name-color": colors.name,
+      "--desktop-category-fill-color": colors.fill,
+      "--desktop-category-underline-color": colors.underline,
+      "--desktop-category-badge-color": colors.badge
+    } as CSSProperties;
+  }
+
+  function renderDesktopCategoryList() {
+    return (
+      <div className={categoryListClassName}>
+        <button
+          className={selectedDesktopCategoryId === allDesktopCategoryId ? "category-item selected" : "category-item"}
+          onClick={() => setSelectedDesktopCategoryId(allDesktopCategoryId)}
+          style={desktopCategoryStyle()}
+        >
+          <span>全部桌面</span>
+          <small>{desktopItems.length}</small>
+        </button>
+        {desktopCategories.map((category) => (
+          <button
+            key={category.id}
+            className={[
+              "category-item",
+              selectedDesktopCategoryId === category.id ? "selected" : "",
+              draggedDesktopCategoryId === category.id ? "dragging" : "",
+              !category.name.trim() ? "empty-name" : ""
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            draggable={desktopEditMode}
+            onDragStart={() => {
+              if (!desktopEditMode) return;
+              draggedDesktopCategoryIdRef.current = category.id;
+              setDraggedDesktopCategoryId(category.id);
+            }}
+            onDragOver={(event) => {
+              if (desktopEditMode && draggedDesktopCategoryId) event.preventDefault();
+            }}
+            onDrop={() => reorderDesktopCategory(category.id)}
+            onDragEnd={() => {
+              draggedDesktopCategoryIdRef.current = "";
+              setDraggedDesktopCategoryId("");
+            }}
+            onClick={() => setSelectedDesktopCategoryId(category.id)}
+            onContextMenu={(event) => openDesktopCategoryMenu(event, category.id)}
+            style={desktopCategoryStyle(category)}
+          >
+            <span>{category.name.trim() || "未命名分类"}</span>
+            <small>{category.itemPaths.length}</small>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className={launcherCompact ? "window-frame compact" : "window-frame"} style={appearanceStyle}>
       {!launcherCompact && (
@@ -1021,7 +1313,7 @@ export function App() {
           .join(" ")}
       >
         {desktopModuleVisible && (
-        <aside className={desktopEditMode ? "desktop-board editing" : "desktop-board"}>
+        <aside className={desktopBoardClassName}>
           <div className="desktop-board-head">
             <div>
               <h2>桌面分类</h2>
@@ -1043,7 +1335,7 @@ export function App() {
               <button
                 className={desktopEditMode ? "desktop-edit-toggle active" : "desktop-edit-toggle"}
                 title={desktopEditMode ? "完成编辑" : "编辑分类"}
-                onClick={() => setDesktopEditMode((current) => !current)}
+                onClick={toggleDesktopEditMode}
               >
                 {desktopEditMode ? <Check size={14} /> : <Pencil size={14} />}
                 <span>{desktopEditMode ? "完成" : "编辑"}</span>
@@ -1066,45 +1358,7 @@ export function App() {
             <SelectMenu value={desktopSortMode} options={desktopSortOptions} onChange={changeDesktopSortMode} width={124} />
           </div>
 
-          <div className="category-list">
-            <button
-              className={selectedDesktopCategoryId === allDesktopCategoryId ? "category-item selected" : "category-item"}
-              onClick={() => setSelectedDesktopCategoryId(allDesktopCategoryId)}
-            >
-              <span>全部桌面</span>
-              <small>{desktopItems.length}</small>
-            </button>
-            {desktopCategories.map((category) => (
-              <button
-                key={category.id}
-                className={[
-                  "category-item",
-                  selectedDesktopCategoryId === category.id ? "selected" : "",
-                  draggedDesktopCategoryId === category.id ? "dragging" : ""
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                draggable={desktopEditMode}
-                onDragStart={() => {
-                  if (!desktopEditMode) return;
-                  draggedDesktopCategoryIdRef.current = category.id;
-                  setDraggedDesktopCategoryId(category.id);
-                }}
-                onDragOver={(event) => {
-                  if (desktopEditMode && draggedDesktopCategoryId) event.preventDefault();
-                }}
-                onDrop={() => reorderDesktopCategory(category.id)}
-                onDragEnd={() => {
-                  draggedDesktopCategoryIdRef.current = "";
-                  setDraggedDesktopCategoryId("");
-                }}
-                onClick={() => setSelectedDesktopCategoryId(category.id)}
-              >
-                <span>{category.name}</span>
-                <small>{category.itemPaths.length}</small>
-              </button>
-            ))}
-          </div>
+          {desktopDisplaySettings.categoryPlacement === "top" && renderDesktopCategoryList()}
 
           <div className="desktop-folder-head">
             {desktopEditMode && selectedDesktopCategory ? (
@@ -1112,6 +1366,7 @@ export function App() {
                 <input
                   value={selectedDesktopCategory.name}
                   onChange={(event) => renameDesktopCategory(selectedDesktopCategory.id, event.target.value)}
+                  aria-invalid={Boolean(desktopEditError && !selectedDesktopCategory.name.trim())}
                 />
                 <button title="删除分类" onClick={() => deleteDesktopCategory(selectedDesktopCategory.id)}>
                   <Trash2 size={14} />
@@ -1121,6 +1376,7 @@ export function App() {
               <strong>{selectedDesktopCategory?.name ?? "全部桌面"}</strong>
             )}
           </div>
+          {desktopEditError && <div className="desktop-edit-warning">{desktopEditError}</div>}
 
           {systemSettings?.showDesktopTree && desktopFolderStack.length > 0 && (
             <div className="desktop-breadcrumb">
@@ -1174,17 +1430,19 @@ export function App() {
                       {desktopEditMode && <td>{formatDesktopType(item)}</td>}
                       {desktopEditMode && (
                         <td className="desktop-category-cell">
-                          <select
+                          <SelectMenu
                             value={findDesktopCategoryId(item.path)}
-                            onChange={(event) => assignDesktopItem(item.path, event.target.value)}
-                          >
-                            <option value="">未分类</option>
-                            {desktopCategories.map((category) => (
-                              <option key={category.id} value={category.id}>
-                                {category.name}
-                              </option>
-                            ))}
-                          </select>
+                            options={[
+                              { label: "未分类", value: "" },
+                              ...desktopCategories.map((category) => ({
+                                label: category.name.trim() || "未命名分类",
+                                value: category.id
+                              }))
+                            ]}
+                            onChange={(value) => assignDesktopItem(item.path, value)}
+                            className="desktop-category-menu"
+                            fixedPopover
+                          />
                         </td>
                       )}
                     </tr>
@@ -1224,6 +1482,7 @@ export function App() {
             )}
             {!desktopDisplayItems.length && <div className="desktop-empty">暂无项目</div>}
           </div>
+          {desktopDisplaySettings.categoryPlacement === "bottom" && renderDesktopCategoryList()}
         </aside>
         )}
 
@@ -1352,6 +1611,24 @@ export function App() {
         )}
       </div>
 
+      {desktopCategoryMenu && desktopCategoryMenuTarget && (
+        <div
+          className="desktop-context-menu"
+          style={{ left: desktopCategoryMenu.x, top: desktopCategoryMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setDesktopCategoryColorId(desktopCategoryMenuTarget.id);
+              setDesktopCategoryMenu(null);
+            }}
+          >
+            颜色设置
+          </button>
+        </div>
+      )}
+
       {settingsOpen && (
         <div className="settings-backdrop" onMouseDown={() => setSettingsOpen(false)}>
           <aside className="settings-panel" onMouseDown={(event) => event.stopPropagation()}>
@@ -1394,6 +1671,55 @@ export function App() {
         </div>
       )}
 
+      {desktopCategoryColorTarget && (
+        <div className="settings-backdrop" onMouseDown={() => setDesktopCategoryColorId("")}>
+          <aside className="settings-panel desktop-category-color-panel" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="settings-head">
+              <div>
+                <h2>颜色设置</h2>
+                <p>{desktopCategoryColorTarget.name.trim() || "未命名分类"}</p>
+              </div>
+              <button title="关闭" onClick={() => setDesktopCategoryColorId("")}>
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="desktop-display-form">
+              <div className="desktop-display-section">
+                <strong>分类颜色</strong>
+                {desktopCategoryColorFields.map((field) => {
+                  const colors = normalizeDesktopCategoryColors(desktopCategoryColorTarget.colors);
+                  return (
+                    <label key={field.key} className="color-row">
+                      <span>{field.label}</span>
+                      <input
+                        type="color"
+                        value={colors[field.key]}
+                        onChange={(event) =>
+                          updateDesktopCategoryColor(desktopCategoryColorTarget.id, field.key, event.target.value)
+                        }
+                      />
+                      <output>{colors[field.key]}</output>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="desktop-display-actions">
+              <button
+                className="reset-button"
+                type="button"
+                onClick={() => resetDesktopCategoryColors(desktopCategoryColorTarget.id)}
+              >
+                <RotateCcw size={14} />
+                恢复默认
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
       {desktopDisplayOpen && (
         <div className="settings-backdrop" onMouseDown={() => setDesktopDisplayOpen(false)}>
           <aside className="settings-panel desktop-display-panel" onMouseDown={(event) => event.stopPropagation()}>
@@ -1408,22 +1734,96 @@ export function App() {
             </div>
 
             <div className="desktop-display-form">
-              {desktopDisplayFields.map((field) => (
-                <label key={field.key}>
-                  <span>{field.label}</span>
-                  <input
-                    type="range"
-                    min={field.min}
-                    max={field.max}
-                    value={desktopDisplaySettings[field.key]}
-                    onChange={(event) => updateDesktopDisplaySetting(field.key, Number(event.target.value))}
-                  />
-                  <strong>
-                    {desktopDisplaySettings[field.key]}
-                    {field.unit}
-                  </strong>
-                </label>
-              ))}
+              <div className="desktop-display-section">
+                <strong>项目显示</strong>
+                {desktopDisplayFields
+                  .filter((field) => field.key !== "categoryMaxPerRow")
+                  .map((field) => (
+                    <label key={field.key}>
+                      <span>{field.label}</span>
+                      <input
+                        type="range"
+                        min={field.min}
+                        max={field.max}
+                        value={desktopDisplaySettings[field.key]}
+                        onChange={(event) => updateDesktopDisplaySetting(field.key, Number(event.target.value))}
+                      />
+                      <output>
+                        {desktopDisplaySettings[field.key]}
+                        {field.unit}
+                      </output>
+                    </label>
+                  ))}
+              </div>
+
+              <div className="desktop-display-section">
+                <strong>分类位置</strong>
+                <div className="segmented-row">
+                  <span>排列方向</span>
+                  <div className="segmented-control">
+                    {desktopCategoryOrientationOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={desktopDisplaySettings.categoryOrientation === option.value ? "selected" : ""}
+                        onClick={() => updateDesktopDisplaySetting("categoryOrientation", option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="segmented-row">
+                  <span>放置位置</span>
+                  <div className="segmented-control">
+                    {desktopCategoryPlacementOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={desktopDisplaySettings.categoryPlacement === option.value ? "selected" : ""}
+                        onClick={() => updateDesktopDisplaySetting("categoryPlacement", option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {desktopDisplaySettings.categoryOrientation === "horizontal" &&
+                  desktopDisplayFields
+                    .filter((field) => field.key === "categoryMaxPerRow")
+                    .map((field) => (
+                      <label key={field.key}>
+                        <span>{field.label}</span>
+                        <input
+                          type="range"
+                          min={field.min}
+                          max={field.max}
+                          value={desktopDisplaySettings[field.key]}
+                          onChange={(event) => updateDesktopDisplaySetting(field.key, Number(event.target.value))}
+                        />
+                        <output>
+                          {desktopDisplaySettings[field.key]}
+                          {field.unit}
+                        </output>
+                      </label>
+                    ))}
+              </div>
+
+              <div className="desktop-display-section">
+                <strong>分类标签</strong>
+                <div className="segmented-control wide">
+                  {desktopCategoryLabelStyleOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={desktopDisplaySettings.categoryLabelStyle === option.value ? "selected" : ""}
+                      onClick={() => updateDesktopDisplaySetting("categoryLabelStyle", option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="desktop-display-actions">
